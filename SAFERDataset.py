@@ -28,7 +28,7 @@ def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
     return pt_data, ecg_data
 
 
-def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag):
+def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name):
     dataset_path = feas2_path if (feas == 2) else feas1_path
 
     pt_data = pd.read_csv(os.path.join(dataset_path, "pt_data_anon.csv"))
@@ -65,11 +65,11 @@ def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag):
     # Generate the class_index
     ecg_data["class_index"] = (ecg_data["measDiag"] == DiagEnum.PoorQuality).astype(int)
     ecg_data["length"] = ecg_data["data"].map(lambda x: x.shape[-1])
-    ecg_data.to_pickle(os.path.join(dataset_path, r"ECGs\raw_dataframe.pk"))
+    ecg_data.to_pickle(os.path.join(dataset_path, f"ECGs/raw_{save_name}.pk"))
 
     if process:
         ecg_data = process_data(ecg_data)
-        ecg_data.to_pickle(os.path.join(dataset_path, r"ECGs\filtered_dataframe.pk"))
+        ecg_data.to_pickle(os.path.join(dataset_path, f"ECGs/filtered_{save_name}.pk"))
 
     return pt_data, ecg_data
 
@@ -114,30 +114,30 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     return feas2_ecg_data
 
 
-def load_feas_dataset_pickle(process, feas=2, force_reprocess=False):
+def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
     dataset_path = feas2_path if (feas == 2) else feas1_path
 
     try:
         pt_data = pd.read_csv(os.path.join(dataset_path, "pt_data_anon.csv"))
-        end_path = r"ECGs\filtered_dataframe.pk" if (process and not force_reprocess) else r"ECGs\raw_dataframe.pk"
+        end_path = r"ECGs\filtered_dataframe.pk" if (process and not force_reprocess) else f"ECGs/raw_{f_name}.pk"
         ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
 
         if force_reprocess:
             ecg_data = process_data(ecg_data)
-            ecg_data.to_pickle(os.path.join(dataset_path, r"ECGs\filtered_dataframe.pk"))
+            ecg_data.to_pickle(os.path.join(dataset_path, f"ECGs/filtered_{f_name}.pk"))
 
         return pt_data, ecg_data
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError, Exception):
         return
 
 
-def load_feas_dataset(feas=2, force_reload=False, process=True, force_reprocess=False, ecg_range=None, ecg_meas_diag=None):
+def load_feas_dataset(feas=2, save_name="dataframe.pk", force_reload=False, process=True, force_reprocess=False, ecg_range=None, ecg_meas_diag=None):
     dataset = None
     if not force_reload:
-        dataset = load_feas_dataset_pickle(process, feas, force_reprocess)
+        dataset = load_feas_dataset_pickle(process, save_name, feas, force_reprocess)
     if dataset is None:
         print("Failed to load from pickle, regenerating files")
-        dataset = load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag)
+        dataset = load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name=save_name)
     else:
         dataset = filter_dataset(dataset[0], dataset[1], ecg_range, ecg_meas_diag)
 
