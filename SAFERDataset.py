@@ -34,6 +34,7 @@ def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name
     pt_data = pd.read_csv(os.path.join(dataset_path, "pt_data_anon.csv"))
     ecg_data = pd.read_csv(os.path.join(dataset_path, "rec_data_anon.csv"))
     ecg_data["data"] = None
+    ecg_data["adc_gain"] = None
 
     ecg_data["measDiagAgree"] = ecg_data["measDiagRev1"] == ecg_data["measDiagRev2"]
 
@@ -56,7 +57,8 @@ def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name
         print(f"Reading file {file_path}\r", end="")
         try:
             record = wfdb.rdrecord(os.path.join(dataset_path, file_path))
-            ecg_data["data"].loc[ind] = wfdb.rdrecord(os.path.join(dataset_path, file_path)).p_signal[:, 0]
+            ecg_data["data"].loc[ind] = record.p_signal[:, 0]
+            ecg_data["adc_gain"].loc[ind] = record.adc_gain[0]
         except (OSError, FileNotFoundError):
             print("Error, file does not exist or cannot be read, skipping")
 
