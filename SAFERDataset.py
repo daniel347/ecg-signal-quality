@@ -76,7 +76,7 @@ def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name
     return pt_data, ecg_data
 
 
-def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=60):
+def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     # perform band pass filtering, notch filtering (for power line interference)
     sos = scipy.signal.butter(3, [f_low, f_high], 'bandpass', fs=500, output='sos')
     sos_notch = scipy.signal.butter(3, [48, 52], 'bandstop', fs=500, output='sos')
