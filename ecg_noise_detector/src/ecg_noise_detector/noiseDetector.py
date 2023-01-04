@@ -100,8 +100,8 @@ def _process_ecg(ecg, fs=500, filter=True):
     raw_data = []
     sampling_freq = fs
     down_freq = 300
-    window = 5
-    rolling = 5
+    window = 3
+    rolling = 1.5
     if filter:
         filtered_ecg = _filter_ecg(ecg, fs)
     else:
