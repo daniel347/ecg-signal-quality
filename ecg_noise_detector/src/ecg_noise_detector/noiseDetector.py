@@ -100,8 +100,8 @@ def _process_ecg(ecg, fs=500, filter=True):
     raw_data = []
     sampling_freq = fs
     down_freq = 300
-    window = 3
-    rolling = 1.5
+    window = 5
+    rolling = 2.5
     if filter:
         filtered_ecg = _filter_ecg(ecg, fs)
     else:
@@ -152,9 +152,8 @@ def _process_ecg(ecg, fs=500, filter=True):
     sSQI_var = 4.87
     kSQI_var = 218.52
 
-
-    processed_ecg['sSQI'] = processed_ecg['sSQI'].apply(lambda x: (x-sSQI_u) / np.sqrt(sSQI_var))
-    processed_ecg['kSQI'] = processed_ecg['kSQI'].apply(lambda x: (x-kSQI_u) / np.sqrt(kSQI_var))
+    # processed_ecg['sSQI'] = processed_ecg['sSQI'].apply(lambda x: (x-sSQI_u) / np.sqrt(sSQI_var))
+    # processed_ecg['kSQI'] = processed_ecg['kSQI'].apply(lambda x: (x-kSQI_u) / np.sqrt(kSQI_var))
 
     return processed_ecg
 
@@ -263,3 +262,18 @@ def _filter_ecg(x, fs):
     x = signal.filtfilt(b, a, x, padlen=150)
     x = (x - min(x)) / (max(x) - min(x))
     return x
+
+
+def _process_single_ecg(datapoint):
+    ind, x = datapoint
+    df = _process_ecg(x["data"], fs=300, filter=False)
+
+    df["class_index"] = x["class_index"]
+    df["ecg_ind"] = ind
+
+    ecg_start_inds = np.arange(0, int(len(x["data"]) + (- 5 + 2.5)*300), int(2.5*300))
+    df["ecg_start"] = ecg_start_inds
+    df["measDiag"] = x["measDiag"]
+    # print(f"processed {ind}")
+
+    return df

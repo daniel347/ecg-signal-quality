@@ -121,7 +121,7 @@ def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
 
     try:
         pt_data = pd.read_csv(os.path.join(dataset_path, "pt_data_anon.csv"))
-        end_path = r"ECGs\filtered_dataframe.pk" if (process and not force_reprocess) else f"ECGs/raw_{f_name}.pk"
+        end_path = f"ECGs/filtered_{f_name}.pk" if (process and not force_reprocess) else f"ECGs/raw_{f_name}.pk"
         ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
 
         if force_reprocess:
