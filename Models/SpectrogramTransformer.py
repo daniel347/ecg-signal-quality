@@ -54,8 +54,8 @@ class LearnedAggregation(nn.Module):
         act_cls:Callable[[None], nn.Module]=nn.GELU,
     ):
         super().__init__()
-        self.gamma_1 = nn.Parameter(1e-4 * torch.ones(ni))
-        self.gamma_2 = nn.Parameter(1e-4 * torch.ones(ni*ncls))
+        self.gamma_1 = nn.Parameter(1e-4 * torch.ones(ncls, ni))
+        # self.gamma_2 = nn.Parameter(1e-4 * torch.ones(ni*ncls))
         self.cls_q = nn.Parameter(torch.zeros((ncls, ni)))
         self.attn = AttentionPool2d(ni, 1, ncls, attn_bias, norm)
         self.norm = norm(ni * ncls)
@@ -72,7 +72,7 @@ class LearnedAggregation(nn.Module):
 
     def forward(self, x:Tensor):
         x = (self.cls_q + self.gamma_1 * self.attn(x, self.cls_q)[0]).flatten(start_dim=1)
-        return x + self.gamma_2 * self.ffn(self.norm(x))
+        return x + self.ffn(self.norm(x)) # * self.gamma_2
 
     @torch.no_grad()
     def _init_weights(self, m):
@@ -101,7 +101,7 @@ class PositionalEncoding(nn.Module):
        # >>> pos_encoder = PositionalEncoding(d_model)
     """
 
-    def __init__(self, d_model, dropout=0.1, max_len=200, device="cpu"):
+    def __init__(self, d_model, dropout=0.1, max_len=600, device="cpu"):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -143,7 +143,6 @@ class TransformerModel(nn.Module):
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
 
-
         self.rri_conv_net = nn.Sequential(
             torch.nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3),
             nn.ReLU(),
@@ -156,17 +155,18 @@ class TransformerModel(nn.Module):
         self.rri_pos_encoder = PositionalEncoding(n_rri_inp, dropout, device=device)
         rri_encoder_layers = TransformerEncoderLayer(n_rri_inp, nhead, nhid, dropout)
         self.rri_transformer = TransformerEncoder(rri_encoder_layers, nlayers)
-        self.rri_attention_pooling = LearnedAggregation(n_rri_inp, ncls=ntoken if multiquery else 1)
+        self.rri_attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(n_rri_inp, ncls=ntoken if multiquery else 1)
 
         self.ninp = ninp
 
-        self.stft_layer_norm = nn.LayerNorm(64)
+        self.stft_window = torch.hann_window(n_fft, device=device)
+        self.stft_layer_norm = nn.LayerNorm(16)
         self.stft_expand_layer = nn.Sequential(
-            nn.Linear(64, ninp),
+            nn.Linear(16, ninp),
             nn.ReLU(),
             nn.LayerNorm(ninp))
 
-        self.attention_pooling = LearnedAggregation(ninp, ncls=ntoken if multiquery else 1)
+        self.attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(ninp, ncls=ntoken if multiquery else 1)
         self. layer_norm = nn.LayerNorm(ninp)
 
         self.decoder1 = nn.Linear((ninp+n_rri_inp)*(ntoken if multiquery else 1), 128)
@@ -202,10 +202,10 @@ class TransformerModel(nn.Module):
         nn.init.uniform_(self.decoder2.weight, -initrange, initrange)
 
     def stft_and_reshape(self, src):
-        ecg_stfts = torch.stft(src, n_fft=self.n_fft, return_complex=True)
+        ecg_stfts = torch.stft(src, n_fft=self.n_fft, return_complex=True, window=self.stft_window)
 
         # Cut spectrogram
-        src = torch.abs(ecg_stfts)[:, 4:68, :]
+        src = torch.log(torch.abs(ecg_stfts))[:, 2:18, :]
         # src[:, 68:, :] = 0
         # src[:, :4, :] = 0
 

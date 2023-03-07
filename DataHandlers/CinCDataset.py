@@ -2,14 +2,14 @@ import pandas as pd
 import os
 import scipy
 import numpy as np
-from DiagEnum import DiagEnum
+from .DiagEnum import DiagEnum
 
 # -------- Loading the datasets --------
 
-cinc_pk_path = "../Datasets/CinC2017Data/database.pk"
+cinc_pk_path = "Datasets/CinC2017Data/database.pk"
 
-training_path = "../Datasets/CinC2017Data/training2017/training2017/"
-answers_path = "../Datasets/CinC2017Data/REFERENCE-v3.csv"
+training_path = "Datasets/CinC2017Data/training2017/training2017/"
+answers_path = "Datasets/CinC2017Data/REFERENCE-v3.csv"
 
 
 def load_cinc_dataset_scratch():
