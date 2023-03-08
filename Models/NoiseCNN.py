@@ -100,6 +100,7 @@ class CNN(nn.Module):
         # [128]
         x = self.dense3(x)
         # x = self.logsoftmax(x)
+        # x = torch.nn.functional.sigmoid(x)
 
         # [1]
         return x
