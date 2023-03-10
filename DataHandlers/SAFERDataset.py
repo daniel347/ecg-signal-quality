@@ -114,6 +114,9 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
 
     return feas2_ecg_data
 
+def load_pt_dataset(feas=2):
+    dataset_path = feas2_path if (feas == 2) else feas1_path
+    return pd.read_csv(os.path.join(dataset_path, "pt_data_anon.csv"))
 
 def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
     dataset_path = feas2_path if (feas == 2) else feas1_path
