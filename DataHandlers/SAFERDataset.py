@@ -26,13 +26,13 @@ def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
 
     return pt_data, ecg_data
 
-
 def generate_af_class_labels(dataset):
     """See notes/ emails for explaination of logic"""
     dataset["class_index"] = -1
     dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 1) & (dataset["measDiag"] == DiagEnum.Undecided), "class_index"] = 0  # If not tagged assume normal
 
     dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["ffReview_sent"] == 1) & (dataset["ffReview_remain"] == 0) & (dataset["feas"] == 1), "class_index"] = 2  # The first review rejection is other (only for feas 1)
+    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 2), "class_index"] = 2 # Anything tagged in feas 2 goes to other
     dataset.loc[dataset["measDiag"] == DiagEnum.AF, "class_index"] = 1  # The cardiologist has said AF
     dataset.loc[(dataset["measDiag"] != DiagEnum.Undecided) & (dataset["measDiag"] != DiagEnum.AF) & (dataset["measDiag"] != DiagEnum.CannotExcludePathology), "class_index"] = 2  # Anything thats got this far is probably dodgy in some way
 
@@ -40,12 +40,15 @@ def generate_af_class_labels(dataset):
     return dataset
 
 
-def reload_r_peaks(dataset, feas, fname):
+def reload_r_peaks(dataset, feas, fname, force_reload=False):
+    # this is dodgy because the index of the values may change!
     dataset_path = feas2_path if (feas == 2) else feas1_path
-    try:
-        dataset["r_peaks"] = pd.read_pickle(os.path.join(dataset_path, "ECGs", fname))
-    except (FileNotFoundError):
-        dataset["r_peaks"] = None
+    dataset["r_peaks"] = None
+    if not force_reload:
+        try:
+            dataset["r_peaks"] = pd.read_pickle(os.path.join(dataset_path, "ECGs", fname))
+        except (FileNotFoundError):
+            pass
 
     resave_beats = pd.isna(dataset["r_peaks"]).any()
 
@@ -62,12 +65,14 @@ def reload_r_peaks(dataset, feas, fname):
     return dataset
 
 
-def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name, feas2_ptID_offset):
+def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name, filter_func):
     dataset_path = feas2_path if (feas == 2) else feas1_path
 
     pt_data = load_pt_dataset(feas)
+    ecg_data = load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, 10000, 200000)
 
-    ecg_data = load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, feas2_ptID_offset)
+    if filter_func:
+        pt_data, ecg_data = filter_func(pt_data, ecg_data)
 
     # Read wfdb ECG records
     for ind, file_path in ecg_data["file_path"].iteritems():
@@ -116,7 +121,7 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     return feas2_ecg_data
 
 
-def load_pt_dataset(feas, feas2_offset=0):
+def load_pt_dataset(feas, feas2_offset=10000):
     dataset_path = feas2_path if (feas == 2) else feas1_path
     pt_df = pd.read_csv(os.path.join(dataset_path, "pt_data_anon.csv"))
     if feas == 2:
@@ -126,7 +131,7 @@ def load_pt_dataset(feas, feas2_offset=0):
     return pt_df
 
 
-def load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, feas2_offset=0):
+def load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, feas2_offset=10000, feas2_ecg_offset=200000):
     dataset_path = feas2_path if (feas == 2) else feas1_path
     ecg_data = pd.read_csv(os.path.join(dataset_path, "rec_data_anon.csv"))
     if feas2_offset != 0 and feas == 2:
@@ -152,18 +157,22 @@ def load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, feas2_offset=0):
     ecg_path_labels = "ECGs/{:06d}/saferF{}_{:06d}"
     ecg_data["file_path"] = ecg_data["measID"].map(lambda id: ecg_path_labels.format((id // 1000) * 1000, feas, id))
 
+    if feas2_ecg_offset != 0 and feas == 2:
+        ecg_data["measID"] += feas2_ecg_offset
+
     # Generate class index
     ecg_data["class_index"] = (ecg_data["measDiag"] == DiagEnum.PoorQuality).astype(int)
     ecg_data["length"] = None
+    ecg_data.index = ecg_data["measID"]
 
     return ecg_data
 
 
-def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False, feas2_ptID_offset=10000):
+def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
     dataset_path = feas2_path if (feas == 2) else feas1_path
 
     try:
-        pt_data = load_pt_dataset(feas, feas2_ptID_offset)
+        pt_data = load_pt_dataset(feas, 10000)
         end_path = f"ECGs/filtered_{f_name}.pk" if (process and not force_reprocess) else f"ECGs/raw_{f_name}.pk"
         ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
 
@@ -177,13 +186,13 @@ def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False, fea
         return
 
 
-def load_feas_dataset(feas=2, save_name="dataframe.pk", force_reload=False, process=True, force_reprocess=False, ecg_range=None, ecg_meas_diag=None, feas2_ptID_offset=10000):
+def load_feas_dataset(feas=2, save_name="dataframe.pk", force_reload=False, process=True, force_reprocess=False, ecg_range=None, ecg_meas_diag=None, filter_func=None):
     dataset = None
     if not force_reload:
-        dataset = load_feas_dataset_pickle(process, save_name, feas, force_reprocess, feas2_ptID_offset)
+        dataset = load_feas_dataset_pickle(process, save_name, feas, force_reprocess)
     if dataset is None:
         print("Failed to load from pickle, regenerating files")
-        dataset = load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name, feas2_ptID_offset)
+        dataset = load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name,  filter_func)
     else:
         dataset = filter_dataset(dataset[0], dataset[1], ecg_range, ecg_meas_diag)
 
