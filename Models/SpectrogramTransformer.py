@@ -144,6 +144,7 @@ class TransformerModel(nn.Module):
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
 
         self.rri_conv_net = nn.Sequential(
+            # nn.BatchNorm1d(1),
             torch.nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3),
             nn.ReLU(),
             nn.BatchNorm1d(32),
@@ -170,7 +171,7 @@ class TransformerModel(nn.Module):
         self. layer_norm = nn.LayerNorm(ninp)
 
         self.decoder1 = nn.Linear((ninp+n_rri_inp)*(ntoken if multiquery else 1), 128)
-        self.dropout1 = nn.Dropout(0.5)
+        self.dropout1 = nn.Dropout(dropout)
         self.decoder2 = nn.Linear(128, ntoken)
         self.n_fft = n_fft
 
@@ -182,11 +183,13 @@ class TransformerModel(nn.Module):
         for param in self.transformer_encoder.parameters():
             param.requires_grad = (not fix)
 
+        """
         for param in self.rri_transformer.parameters():
             param.requires_grad = (not fix)
 
         for param in self.rri_conv_net.parameters():
             param.requires_grad = (not fix)
+        """
 
         for param in self.stft_expand_layer.parameters():
             param.requires_grad = (not fix)

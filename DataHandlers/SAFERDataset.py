@@ -29,14 +29,28 @@ def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
 def generate_af_class_labels(dataset):
     """See notes/ emails for explaination of logic"""
     dataset["class_index"] = -1
-    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 1) & (dataset["measDiag"] == DiagEnum.Undecided), "class_index"] = 0  # If not tagged assume normal
+    # If not tagged assume Normal
+    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 1) & (dataset["measDiag"] == DiagEnum.Undecided), "class_index"] = 0
 
-    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["ffReview_sent"] == 1) & (dataset["ffReview_remain"] == 0) & (dataset["feas"] == 1), "class_index"] = 2  # The first review rejection is other (only for feas 1)
-    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 2), "class_index"] = 2 # Anything tagged in feas 2 goes to other
+    # The first review rejection is Normal (more or less)
+    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["ffReview_sent"] == 1) & (dataset["ffReview_remain"] == 0) & (dataset["feas"] == 1), "class_index"] = 0
+
+    # dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 2), "class_index"] = 2 # Anything tagged in feas 2 goes to other
+
     dataset.loc[dataset["measDiag"] == DiagEnum.AF, "class_index"] = 1  # The cardiologist has said AF
-    dataset.loc[(dataset["measDiag"] != DiagEnum.Undecided) & (dataset["measDiag"] != DiagEnum.AF) & (dataset["measDiag"] != DiagEnum.CannotExcludePathology), "class_index"] = 2  # Anything thats got this far is probably dodgy in some way
+
+    # Anything thats got this far is probably dodgy in some way
+    dataset.loc[dataset["measDiag"].isin([DiagEnum.NoAF, DiagEnum.HeartBlock]), "class_index"] = 2
+
+    dataset.loc[(dataset["measDiag"].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])), "class_index"] = -1
+
+    dataset["measDiagAgree"] = (dataset["measDiagRev1"] == dataset["measDiagRev2"]) |\
+                               (dataset["measDiagRev1"] == DiagEnum.Undecided) |\
+                               (dataset["measDiagRev2"] == DiagEnum.Undecided)
+    dataset.loc[~dataset["measDiagAgree"], "class_index"] = -1
 
     dataset = dataset[dataset["class_index"] != -1]
+
     return dataset
 
 
