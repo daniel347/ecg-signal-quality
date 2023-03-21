@@ -9,10 +9,12 @@ import numpy as np
 import scipy
 from multiprocesspandas import applyparallel
 
+from DataProcessUtilities import *
+
 import wfdb
 
 base_url = "https://physionet.org/files/icentia11k-continuous-ecg/1.0/"
-base_path = "../Datasets/Icentia11k/"
+dataset_path = "../Datasets/Icentia11k/"
 
 
 def download_file(args):
@@ -38,21 +40,21 @@ def find_files(patient_range, types=["atr", "hea", "dat"], n_per_patient = 50):
         path_ext = f"p{p_num[:2]}/p{p_num}/"
 
         # make the patient directories
-        if not os.path.isdir(os.path.join(base_path, f"p{p_num[:2]}")):
-            os.mkdir(os.path.join(base_path, f"p{p_num[:2]}"))
-        if not os.path.isdir(os.path.join(base_path, f"p{p_num[:2]}", f"p{p_num}")):
-            os.mkdir(os.path.join(base_path, f"p{p_num[:2]}", f"p{p_num}"))
+        if not os.path.isdir(os.path.join(dataset_path, f"p{p_num[:2]}")):
+            os.mkdir(os.path.join(dataset_path, f"p{p_num[:2]}"))
+        if not os.path.isdir(os.path.join(dataset_path, f"p{p_num[:2]}", f"p{p_num}")):
+            os.mkdir(os.path.join(dataset_path, f"p{p_num[:2]}", f"p{p_num}"))
 
         for j in range(n_per_patient):
             s_num = str(j).rjust(2, "0")
-            record_names.append(os.path.join(base_path,
+            record_names.append(os.path.join(dataset_path,
                                                f"p{p_num[:2]}",
                                                f"p{p_num}",
                                                f"p{p_num}_s{s_num}"))
             for t in types:
                 section_file = f"p{p_num}_s{s_num}.{t}"
                 record_url = base_url + path_ext + section_file
-                record_filepath = os.path.join(base_path,
+                record_filepath = os.path.join(dataset_path,
                                                f"p{p_num[:2]}",
                                                f"p{p_num}",
                                                f"p{p_num}_s{s_num}.{t}")
@@ -135,7 +137,7 @@ def load_dataset_scratch(record_names):
             long_df.append(pd.Series({"data": data,
                                       "adc_gain": adc_gain,
                                       "fs": fs,
-                                      "r_peaks": r_peaks,
+                                      "r_peaks_original": r_peaks,
                                       "symbols": symbols,
                                       "notes": notes,
                                       "ptID": ptID,
@@ -165,33 +167,53 @@ def load_dataset_scratch(record_names):
 
 def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     # perform band pass filtering, notch filtering (for power line interference)
-
     fs_list = pd.unique(ecg_data["fs"])
     bandpass_dict = {fs: scipy.signal.butter(3, [f_low, f_high], 'bandpass', fs=fs, output='sos') for fs in fs_list}
     notch_dict = {fs: scipy.signal.butter(3, [48, 52], 'bandstop', fs=fs, output='sos') for fs in fs_list}
 
-    def filter_and_norm(x, sos):
-        import scipy
-        x_filt = scipy.signal.sosfiltfilt(sos, x, padlen=150)
-        x_norm = (x_filt - x_filt.mean()) / x_filt.std()
-        return x_norm
-
     ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], bandpass_dict[x["fs"]]), axis=1)
     ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], notch_dict[x["fs"]]), axis=1)
 
-    def resample(x, orig_fs):
-        import scipy
-        resample_len = int(round(x.shape[-1] * resample_rate/orig_fs))
-        return x if (x.shape[-1] == resample_len) else scipy.signal.resample(x, resample_len)
-
-    ecg_data["data"] = ecg_data.apply(lambda x: resample(x["data"], x["fs"]), axis=1)
+    ecg_data["data"] = ecg_data.apply(lambda x: resample(x["data"], resample_rate, x["fs"]), axis=1)
     ecg_data["length"] = ecg_data["data"].map(lambda x: x.shape[-1])
     ecg_data["fs"] = resample_rate
 
     # Scale the R peak positions to the new samplerate
-    ecg_data["r_peaks"] = ecg_data["r_peaks"] * resample_rate/ecg_data["fs"]
+    ecg_data["r_peaks_original"] = ecg_data["r_peaks_original"] * resample_rate/ecg_data["fs"]
+
+    # Get r peak positions and heartrate
+    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks, detector=1)
+    ecg_data["heartrate"] = ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60,
+                                                       axis=1)
+    # Get the rri feature
+    ecg_data["rri_feature"] = (ecg_data["r_peaks"] / resample_rate).map(lambda x: get_rri_feature(x, 60))
+    fewer_5_beats = ecg_data["rri_feature"].map(lambda x: np.sum(x == 0) > 55)
+    ecg_data = ecg_data[~fewer_5_beats]
+    ecg_data["rri_len"] = ecg_data["rri_feature"].map(lambda x: x[x > 0].shape[-1])
+    ecg_data["rri_feature"] = normalise_rri_feature(ecg_data["rri_feature"])
 
     return ecg_data
+
+
+def load_dataset_pickle(f_name):
+    try:
+        end_path = f"filtered_{f_name}.pk"
+        ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
+        return ecg_data
+    except (OSError, FileNotFoundError) as e:
+        print(e)
+    return
+
+
+def load_dataset(save_name="dataframe.pk", force_reload=False, pt_range=None, sections_per_pt=None, split_size=30, disable_download=False, filter_func=None):
+    dataset = None
+    if not force_reload:
+        dataset = load_dataset_pickle(save_name)
+    if dataset is None:
+        pt_range = [0, 1000] if pt_range is None else pt_range
+
+        urls, filenames, record_names = find_files(pt_range)
+        load_dataset_scratch()
 
 
 if __name__ == "__main__":

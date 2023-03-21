@@ -4,7 +4,7 @@ import scipy
 import wfdb
 import numpy as np
 from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum
-from ecgdetectors import Detectors
+from DataProcessUtilities import *
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -13,6 +13,7 @@ matplotlib.use('TkAgg')
 
 feas2_path = r"D:\2022_23_DSiromani\Feas2"
 feas1_path = r"D:\2022_23_DSiromani\Feas1"
+
 
 def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
     if ecg_range is not None:
@@ -25,6 +26,7 @@ def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
         pt_data = pt_data[pt_data["ptID"].isin(ecg_data["ptID"])]
 
     return pt_data, ecg_data
+
 
 def generate_af_class_labels(dataset):
     """See notes/ emails for explaination of logic"""
@@ -52,6 +54,19 @@ def generate_af_class_labels(dataset):
     dataset = dataset[dataset["class_index"] != -1]
 
     return dataset
+
+
+def add_ecg_class_counts(safer_pt_data, safer_ecg_data):
+    safer_pt_data["noNormalRecs"] = safer_ecg_data[safer_ecg_data["class_index"] == 0]["ptID"].value_counts()
+    safer_pt_data["noAFRecs"] = safer_ecg_data[safer_ecg_data["class_index"] == 1]["ptID"].value_counts()
+    safer_pt_data["noOtherRecs"] = safer_ecg_data[safer_ecg_data["class_index"] == 2]["ptID"].value_counts()
+
+    safer_pt_data["noAFRecs"] = safer_pt_data["noAFRecs"].fillna(0)
+    safer_pt_data["noNormalRecs"] = safer_pt_data["noNormalRecs"].fillna(0)
+    safer_pt_data["noOtherRecs"] = safer_pt_data["noOtherRecs"].fillna(0)
+
+    return safer_pt_data
+
 
 def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name, filter_func):
     dataset_path = feas2_path if (feas == 2) else feas1_path
@@ -90,21 +105,23 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     sos = scipy.signal.butter(3, [f_low, f_high], 'bandpass', fs=500, output='sos')
     sos_notch = scipy.signal.butter(3, [48, 52], 'bandstop', fs=500, output='sos')
 
-    def filter_and_norm(x, sos):
-        x_filt = scipy.signal.sosfiltfilt(sos, x, padlen=150)
-        x_norm = (x_filt - x_filt.mean()) / x_filt.std()
-        return x_norm
-
     feas2_ecg_data["data"] = feas2_ecg_data["data"].map(lambda x: filter_and_norm(x, sos))
     feas2_ecg_data["data"] = feas2_ecg_data["data"].map(lambda x: filter_and_norm(x, sos_notch))
 
     if resample_rate != 500:
-        def resample(x):
-            resample_len = int(round(x.shape[-1] * resample_rate/500))
-            return scipy.signal.resample(x, resample_len)
-
-        feas2_ecg_data["data"] = feas2_ecg_data["data"].map(lambda x: resample(x))
+        feas2_ecg_data["data"] = feas2_ecg_data["data"].map(lambda x: resample(x, resample_rate, 500))
         feas2_ecg_data["length"] = feas2_ecg_data["data"].map(lambda x: x.shape[-1])
+
+    # Get beat positions and heartrate
+    feas2_ecg_data["r_peaks"] = feas2_ecg_data.apply_parallel(get_r_peaks, detector=1)
+    feas2_ecg_data["heartrate"] = feas2_ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60, axis=1)
+
+    # Get the rri feature
+    feas2_ecg_data["rri_feature"] = (feas2_ecg_data["r_peaks"] / resample_rate).map(lambda x: get_rri_feature(x, 60))
+    fewer_5_beats = feas2_ecg_data["rri_feature"].map(lambda x: np.sum(x == 0) > 55)
+    feas2_ecg_data = feas2_ecg_data[~fewer_5_beats]
+    feas2_ecg_data["rri_len"] = feas2_ecg_data["rri_feature"].map(lambda x: x[x > 0].shape[-1])
+    feas2_ecg_data["rri_feature"] = normalise_rri_feature(feas2_ecg_data["rri_feature"])
 
     return feas2_ecg_data
 
@@ -162,6 +179,7 @@ def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
     try:
         pt_data = load_pt_dataset(feas, 10000)
         end_path = f"ECGs/filtered_{f_name}.pk" if (process and not force_reprocess) else f"ECGs/raw_{f_name}.pk"
+
         ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
 
         if force_reprocess:

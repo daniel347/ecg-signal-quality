@@ -9,7 +9,8 @@ from scipy.io import loadmat
 from .DiagEnum import DiagEnum, feas1DiagToEnum
 from .CinC2020Enums import Sex
 from tqdm import tqdm
-from ecgdetectors import Detectors
+
+from DataProcessUtilities import *
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -262,44 +263,25 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     bandpass_dict = {fs: scipy.signal.butter(3, [f_low, f_high], 'bandpass', fs=fs, output='sos') for fs in fs_list}
     notch_dict = {fs: scipy.signal.butter(3, [48, 52], 'bandstop', fs=fs, output='sos') for fs in fs_list}
 
-    def filter_and_norm(x, sos):
-        x_filt = scipy.signal.sosfiltfilt(sos, x, padlen=150)
-        x_norm = (x_filt - x_filt.mean()) / x_filt.std()
-        return x_norm
-
-    """
-    w, h = scipy.signal.sosfreqz(sos, fs=500 * 2 * np.pi)
-    plt.semilogx(w/(2*np.pi), 20 * np.log10(np.abs(h)))
-    plt.title('band pass frequency response')
-    plt.xlabel('Frequency [Hz]')
-    plt.ylabel('Amplitude [dB]')
-    plt.show()
-
-    w, h = scipy.signal.sosfreqz(sos_notch, fs=500 * 2 * np.pi)
-    plt.semilogx(w/(2*np.pi), 20 * np.log10(np.abs(h)))
-    plt.title('notch frequency response')
-    plt.xlabel('Frequency [Hz]')
-    plt.ylabel('Amplitude [dB]')
-    plt.show()
-    """
-
     ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], bandpass_dict[x["fs"]]), axis=1)
     ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], notch_dict[x["fs"]]), axis=1)
 
-    def resample(x, orig_fs):
-        resample_len = int(round(x.shape[-1] * resample_rate/orig_fs))
-        return x if (x.shape[-1] == resample_len) else scipy.signal.resample(x, resample_len)
-
-    ecg_data["data"] = ecg_data.apply(lambda x: resample(x["data"], x["fs"]), axis=1)
+    ecg_data["data"] = ecg_data.apply(lambda x: resample(x["data"], resample_rate, x["fs"]), axis=1)
     ecg_data["length"] = ecg_data["data"].map(lambda x: x.shape[-1])
     ecg_data["fs"] = resample_rate
 
-    # Get beat positions and heartrates
-    detectors = Detectors(300)
-
-    ecg_data["r_peaks"] = ecg_data["data"].map(detectors.pan_tompkins_detector)
-    ecg_data["r_peaks"] = ecg_data["r_peaks"].map(np.array)
+    # Get beat positions and heartrate
+    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks, detector=1)
     ecg_data["heartrate"] = ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60, axis=1)
+
+    # Get the rri feature
+    ecg_data["rri_feature"] = (ecg_data["r_peaks"] / ecg_data["fs"]).map(lambda x: get_rri_feature(x, 20))
+    fewer_5_beats = ecg_data["rri_feature"].map(lambda x: np.sum(x == 0) > 15)
+    ecg_data = ecg_data[~fewer_5_beats]
+    ecg_data["rri_len"] = ecg_data["rri_feature"].map(lambda x: x[x > 0].shape[-1])
+    ecg_data["rri_feature"] = normalise_rri_feature(ecg_data["rri_feature"])
+
+    ecg_data["dataset"] = ecg_data["filepath"].map(lambda x: x.split(os.sep)[-3])
 
     return ecg_data
 
