@@ -131,7 +131,7 @@ class PositionalEncoding(nn.Module):
 class TransformerModel(nn.Module):
     """Container module with an encoder, a recurrent or transformer module, and a decoder."""
 
-    def __init__(self, ntoken, ninp, nhead, nhid, nlayers, n_fft, n_rri_inp, dropout=0.1, device="cpu", multiquery=False):
+    def __init__(self, ntoken, ninp, nhead, nhid, nlayers, n_fft, n_rri_inp, dropout=0.1, device="cpu", enable_rri=True, enable_spec=True):
         super(TransformerModel, self).__init__()
         try:
             from torch.nn import TransformerEncoder, TransformerEncoderLayer
@@ -139,63 +139,69 @@ class TransformerModel(nn.Module):
             raise ImportError('TransformerEncoder module does not exist in PyTorch 1.1 or '
                               'lower.') from e
 
-        self.pos_encoder = PositionalEncoding(ninp, dropout, device=device)
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-
-        self.rri_conv_net = nn.Sequential(
-            # nn.BatchNorm1d(1),
-            torch.nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3),
-            nn.ReLU(),
-            nn.BatchNorm1d(32),
-            torch.nn.Conv1d(in_channels=32, out_channels=n_rri_inp, kernel_size=3),
-            nn.ReLU(),
-            nn.BatchNorm1d(n_rri_inp),
-        )
-
-        self.rri_pos_encoder = PositionalEncoding(n_rri_inp, dropout, device=device)
-        rri_encoder_layers = TransformerEncoderLayer(n_rri_inp, nhead, nhid, dropout)
-        self.rri_transformer = TransformerEncoder(rri_encoder_layers, nlayers)
-        self.rri_attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(n_rri_inp, ncls=ntoken if multiquery else 1)
-
+        self.device = device
         self.ninp = ninp
-
-        self.stft_window = torch.hann_window(n_fft, device=device)
-        self.stft_layer_norm = nn.LayerNorm(16)
-        self.stft_expand_layer = nn.Sequential(
-            nn.Linear(16, ninp),
-            nn.ReLU(),
-            nn.LayerNorm(ninp))
-
-        self.attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(ninp, ncls=ntoken if multiquery else 1)
-        self. layer_norm = nn.LayerNorm(ninp)
-
-        self.decoder1 = nn.Linear((ninp+n_rri_inp)*(ntoken if multiquery else 1), 128)
-        self.dropout1 = nn.Dropout(dropout)
-        self.decoder2 = nn.Linear(128, ntoken)
         self.n_fft = n_fft
 
-        self.sigmoid = nn.Sigmoid()
+        self.enable_rri = enable_rri
+        if enable_rri:
+            self.rri_conv_net = nn.Sequential(
+                # nn.BatchNorm1d(1),
+                torch.nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.BatchNorm1d(32),
+                torch.nn.Conv1d(in_channels=32, out_channels=n_rri_inp, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.BatchNorm1d(n_rri_inp),
+            )
+
+            self.rri_pos_encoder = PositionalEncoding(n_rri_inp, dropout, device=device)
+            rri_encoder_layers = TransformerEncoderLayer(n_rri_inp, nhead, nhid, dropout)
+            self.rri_transformer = TransformerEncoder(rri_encoder_layers, nlayers)
+            self.rri_attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(n_rri_inp, ncls=ntoken if multiquery else 1)
+
+        self.enable_spec = enable_spec
+        if enable_spec:
+            self.pos_encoder = PositionalEncoding(ninp, dropout, device=device)
+            encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+            self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+
+            self.stft_window = torch.hann_window(n_fft, device=device)
+            self.stft_layer_norm = nn.LayerNorm(16)
+            self.stft_expand_layer = nn.Sequential(
+                nn.Linear(16, ninp),
+                nn.ReLU(),
+                nn.LayerNorm(ninp))
+
+            self.attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(ninp, ncls=ntoken if multiquery else 1)
+            self. layer_norm = nn.LayerNorm(ninp)
+
+        decoder_input_size = (ninp if enable_spec else 0) + (n_rri_inp if enable_rri else 0)
+
+        self.decoder1 = nn.Linear(decoder_input_size, 128)
+        self.dropout1 = nn.Dropout(dropout)
+        self.decoder2 = nn.Linear(128, ntoken)
 
         self.init_weights()
 
-    def fix_transformer_params(self, fix=True):
-        for param in self.transformer_encoder.parameters():
-            param.requires_grad = (not fix)
+    def fix_transformer_params(self, fix_spec=True, fix_rri=True):
 
-        """
-        for param in self.rri_transformer.parameters():
-            param.requires_grad = (not fix)
+        if self.enable_rri:
+            for param in self.rri_transformer.parameters():
+                param.requires_grad = (not fix_rri)
 
-        for param in self.rri_conv_net.parameters():
-            param.requires_grad = (not fix)
-        """
+            for param in self.rri_conv_net.parameters():
+                param.requires_grad = (not fix_rri)
 
-        for param in self.stft_expand_layer.parameters():
-            param.requires_grad = (not fix)
+        if self.enable_spec:
+            for param in self.stft_expand_layer.parameters():
+                param.requires_grad = (not fix_spec)
 
-        for param in self.stft_layer_norm.parameters():
-            param.requires_grad = (not fix)
+            for param in self.stft_layer_norm.parameters():
+                param.requires_grad = (not fix_spec)
+
+            for param in self.transformer_encoder.parameters():
+                param.requires_grad = (not fix_spec)
 
     def init_weights(self):
         initrange = 0.1
@@ -209,47 +215,53 @@ class TransformerModel(nn.Module):
 
         # Cut spectrogram
         src = torch.log(torch.abs(ecg_stfts))[:, 2:18, :]
-        # src[:, 68:, :] = 0
-        # src[:, :4, :] = 0
 
         src = torch.permute(src, [2, 0, 1])
         src = self.stft_layer_norm(src[:, :, :self.ninp])
         src = self.stft_expand_layer(src)
 
-        # Layer norm
-        # src = (src - torch.mean(src, dim=-1)[:, :, None])/torch.std(src, dim=-1)[:, :, None]
-
-        # Batch norm
-        # src = self.spectrogram_bn(torch.unsqueeze(src, dim=1))[:, 0, :, :]
         return src
 
-    def forward(self, src, rri):
+    def construct_padding_mask(self, batch_size, padded_len, rri_len):
+        padding = torch.arange(padded_len, device=self.device).repeat([batch_size, 1])
+        padding = (padding >= rri_len[:, None]).type(torch.bool)
 
-        src = self.stft_and_reshape(src)
-        src = self.pos_encoder(src)
+        return padding
 
-        rri = torch.unsqueeze(rri, dim=1)
-        rri = self.rri_conv_net(rri)
+    def forward(self, src, rri, rri_len=None):
 
-        rri = torch.permute(rri, [2, 0, 1])
+        if self.enable_spec:
+            src = self.stft_and_reshape(src)
+            src = self.pos_encoder(src)
 
-        output = self.transformer_encoder(src)
-        rri_output = self.rri_transformer(rri)
+            output = self.transformer_encoder(src)
+            output = torch.transpose(output, 0, 1)
+            output = self.attention_pooling(output)
 
-        rri_output = torch.transpose(rri_output, 0, 1)
-        output = torch.transpose(output, 0, 1)
+        if self.enable_rri:
+            rri = torch.unsqueeze(rri, dim=1)
+            rri = self.rri_conv_net(rri)
 
-        output = self.attention_pooling(output)
-        rri_output = self.rri_attention_pooling(rri_output)
+            rri = torch.permute(rri, [2, 0, 1])
 
-        output = torch.concat([output, rri_output], dim=-1)
+            if rri_len is None:
+                rri_output = self.rri_transformer(rri)
+            else:
+                padding = self.construct_padding_mask(rri.shape[1], rri.shape[0],  rri_len)
+                rri_output = self.rri_transformer(rri, src_key_padding_mask=padding)
+
+            rri_output = torch.transpose(rri_output, 0, 1)
+            rri_output = self.rri_attention_pooling(rri_output)
+
+        if self.enable_rri and self.enable_spec:
+            output = torch.concat([output, rri_output], dim=-1)
+        elif self.enable_rri:
+            output = rri_output
 
         output = self.decoder1(output)
         output = nn.functional.relu(output)
         output = self.dropout1(output)
 
         output = self.decoder2(output)
-
-        # output = self.sigmoid(output)
 
         return output

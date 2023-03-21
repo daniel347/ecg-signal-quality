@@ -53,32 +53,6 @@ def generate_af_class_labels(dataset):
 
     return dataset
 
-
-def reload_r_peaks(dataset, feas, fname, force_reload=False):
-    # this is dodgy because the index of the values may change!
-    dataset_path = feas2_path if (feas == 2) else feas1_path
-    dataset["r_peaks"] = None
-    if not force_reload:
-        try:
-            dataset["r_peaks"] = pd.read_pickle(os.path.join(dataset_path, "ECGs", fname))
-        except (FileNotFoundError):
-            pass
-
-    resave_beats = pd.isna(dataset["r_peaks"]).any()
-
-    detectors = Detectors(300)
-    dataset.loc[pd.isna(dataset["r_peaks"]), "r_peaks"] = dataset.loc[pd.isna(dataset["r_peaks"]), "data"].map(detectors.pan_tompkins_detector)
-    dataset["r_peaks"] = dataset["r_peaks"].map(np.array)
-    if dataset.empty:
-        dataset["heartrate"] = None
-    else:
-        dataset["heartrate"] = dataset.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / 300)) * 60, axis=1)
-    if resave_beats:
-        dataset["r_peaks"].to_pickle(os.path.join(dataset_path, "ECGs", fname))
-
-    return dataset
-
-
 def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name, filter_func):
     dataset_path = feas2_path if (feas == 2) else feas1_path
 
