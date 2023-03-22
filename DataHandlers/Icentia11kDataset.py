@@ -74,9 +74,11 @@ def download_parallel(urls, filepaths):
         pass
 
 
-def split_recording(data, cut_len):
+def split_recording(data, cut_len, data_len=None):
     cut_samp = cut_len * data.fs
-    splits = np.arange(0, data.data.shape[0], cut_samp)
+    if data_len is None:
+        data_len = data.data.shape[0]
+    splits = np.arange(0, data_len, cut_samp)
 
     data_splits = []
 
@@ -119,24 +121,27 @@ def split_recording(data, cut_len):
     return pd.DataFrame(data_splits)
 
 
-def load_dataset_scratch(record_names, split_len):
+def load_dataset_scratch(record_names, split_len, load_data=True):
     long_df = []
 
     for n in record_names:
         try:
             ann = wfdb.rdann(n, "atr")
-            rec = wfdb.rdrecord(n)
+            if load_data:
+                rec = wfdb.rdrecord(n)
+            else:
+                rec = wfdb.rdheader(n)
+                data = np.array([])
 
-            data = rec.p_signal[:, 0]
             adc_gain = rec.adc_gain[0]
             fs = rec.fs
+
+            ptID = int(rec.file_name[0][1:6])
+            sample_id = int(rec.file_name[0][8:10])
 
             r_peaks = np.array(ann.sample)
             symbols = np.array(ann.symbol)
             notes = np.array(ann.aux_note)
-
-            ptID = int(rec.file_name[0][1:6])
-            sample_id = int(rec.file_name[0][8:10])
 
             long_df.append(pd.Series({"data": data,
                                       "adc_gain": adc_gain,
@@ -156,7 +161,8 @@ def load_dataset_scratch(record_names, split_len):
     print(long_df.data.map(lambda x: x.shape))
 
     print("Processing Data")
-    long_df = process_data(long_df)
+    if load_data:
+        long_df = process_data(long_df)
     print(long_df.head())
 
     short_dfs = []
@@ -210,7 +216,7 @@ def load_dataset_pickle(f_name):
     return
 
 
-def load_dataset(save_name="dataframe", force_reload=False, pt_range=(0, 11000), sections_per_pt=50, split_size=30, download=False):
+def load_dataset(save_name="dataframe", force_reload=False, pt_range=(0, 11000), sections_per_pt=50, split_size=30, download=False, load_data=True):
     dataset = None
 
     if not force_reload:
@@ -222,7 +228,7 @@ def load_dataset(save_name="dataframe", force_reload=False, pt_range=(0, 11000),
         if download:
             download_parallel(urls, filenames)
 
-        dataset = load_dataset_scratch(record_names, split_size)
+        dataset = load_dataset_scratch(record_names, split_size, load_data)
         dataset.to_pickle(os.path.join(dataset_path, f"{save_name}.pk"))
 
     dataset = dataset[(dataset["ptID"] < pt_range[1]) & (dataset["ptID"] >= pt_range[0])]

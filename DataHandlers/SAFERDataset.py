@@ -5,6 +5,7 @@ import wfdb
 import numpy as np
 from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum
 from DataHandlers.DataProcessUtilities import *
+from multiprocesspandas import applyparallel
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -105,16 +106,23 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     sos = scipy.signal.butter(3, [f_low, f_high], 'bandpass', fs=500, output='sos')
     sos_notch = scipy.signal.butter(3, [48, 52], 'bandstop', fs=500, output='sos')
 
-    feas2_ecg_data["data"] = feas2_ecg_data["data"].map(lambda x: filter_and_norm(x, sos))
-    feas2_ecg_data["data"] = feas2_ecg_data["data"].map(lambda x: filter_and_norm(x, sos_notch))
+    feas2_ecg_data["data"] = feas2_ecg_data["data"].apply_parallel(lambda x: filter_and_norm(x, sos))
+    feas2_ecg_data["data"] = feas2_ecg_data["data"].apply_parallel(lambda x: filter_and_norm(x, sos_notch))
 
     if resample_rate != 500:
-        feas2_ecg_data["data"] = feas2_ecg_data["data"].map(lambda x: resample(x, resample_rate, 500))
+        feas2_ecg_data["data"] = feas2_ecg_data["data"].apply_parallel(lambda x: resample(x, resample_rate, 500))
         feas2_ecg_data["length"] = feas2_ecg_data["data"].map(lambda x: x.shape[-1])
 
     # Get beat positions and heartrate
-    feas2_ecg_data["r_peaks"] = feas2_ecg_data.apply_parallel(get_r_peaks, detector=1)
-    feas2_ecg_data["heartrate"] = feas2_ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60, axis=1)
+    feas2_ecg_data["r_peaks"] = feas2_ecg_data.apply(get_r_peaks, axis=1)
+    """
+    try:
+        feas2_ecg_data["r_peaks"] = feas2_ecg_data.apply(get_r_peaks, axis=1)
+    except:
+        feas2_ecg_data["r_peaks"] = feas2_ecg_data.apply(get_r_peaks, axis=1)
+    """
+
+    feas2_ecg_data["heartrate"] = feas2_ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / 300)) * 60, axis=1)
 
     # Get the rri feature
     feas2_ecg_data["rri_feature"] = (feas2_ecg_data["r_peaks"] / resample_rate).map(lambda x: get_rri_feature(x, 60))

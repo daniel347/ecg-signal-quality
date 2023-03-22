@@ -51,6 +51,7 @@ def load_cinc_dataset(force_reload=False):
 
     dataset["length"] = dataset["data"].map(lambda arr: arr.shape[-1])
     dataset["data"] = dataset["data"].map(lambda d: d[0])
+    dataset["fs"] = 300
 
     dataset["measDiag"] = dataset["class"].map(generate_safer_style_label)
     dataset["class_index"] = (dataset["class"] == DiagEnum.PoorQuality).astype(int)

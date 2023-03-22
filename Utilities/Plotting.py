@@ -34,6 +34,15 @@ def plot_ecg_poincare(rri):
     plt.show()
 
 
+def plot_ecg_drr(rri):
+    fig = plt.figure()
+    drri = np.diff(rri)
+    plt.plot(rri[1:], drri)
+    plt.xlabel("RR interval")
+    plt.ylabel("dRR interval")
+    plt.show()
+
+
 def plot_ecg(x, fs=300, n_split=1, r_peaks=None, attention=None, num_segments=None):
     sample_len = x.shape[0]
     time_axis = np.arange(sample_len)/fs

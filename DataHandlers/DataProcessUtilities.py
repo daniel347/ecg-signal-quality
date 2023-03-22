@@ -27,21 +27,13 @@ def get_rri_feature(x, n_beats=60):
 def get_r_peaks(x):
     import numpy as np
     import neurokit2 as nk
-    from scipy.signal import windows
-    half_window_size = 50
-    # raw_peak_pos = np.array(detector.hamilton_detector(x["data"]))
-    _, info = nk.ecg_peaks(x["data"], sampling_rate=300)
-    raw_peak_pos = np.array(info["ECG_R_Peaks"])
 
-    """
-    # Now find the closest peak to this value
-    padded_data = np.pad(x["data"], half_window_size, constant_values=0)
-    window = windows.hamming(2*half_window_size)  # window to bias the detector towards a nearby max rather than a far away one
-    # Note the offset of half window size to account for the padding
-    signal_segs = np.array([padded_data[rpp:rpp + 2*half_window_size] for rpp in raw_peak_pos]) * window[None, :]
-    max_positions = np.argmax(signal_segs, axis=1) + raw_peak_pos - half_window_size
-    """
-    return raw_peak_pos
+    try:
+        _, info = nk.ecg_peaks(x["data"], sampling_rate=300)
+    except (IndexError, Exception):
+        # I think I get an index error if no R peaks are found
+        return np.array([])
+    return np.array(info["ECG_R_Peaks"])
 
 
 def normalise_rri_feature(feature):
