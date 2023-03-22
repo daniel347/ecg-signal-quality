@@ -9,13 +9,16 @@ import numpy as np
 import scipy
 from multiprocesspandas import applyparallel
 
-from DataProcessUtilities import *
+from DataHandlers.DataProcessUtilities import *
+
+import torch
 
 import wfdb
 
 base_url = "https://physionet.org/files/icentia11k-continuous-ecg/1.0/"
-dataset_path = "../Datasets/Icentia11k/"
+dataset_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\Icentia11k"
 
+data_max_chunk_size = 100000
 
 def download_file(args):
     url, path = args
@@ -84,7 +87,7 @@ def split_recording(data, cut_len):
     # which is filtered so the rest of the diags align with the data
 
     for i, (start, end) in enumerate(zip(splits, splits[1:])):
-        ann_notes = data.notes[np.logical_and(data.r_peaks >= start, data.r_peaks < end)]
+        ann_notes = data.notes[np.logical_and(data.r_peaks_original >= start, data.r_peaks_original < end)]
 
         if "(N" in ann_notes:
             afib = False
@@ -98,9 +101,10 @@ def split_recording(data, cut_len):
 
         data_split = data.copy()
         data_split.data = data_split.data[start:end]
+        data_split.r_peaks_original = data_split.r_peaks_original[np.logical_and(data.r_peaks_original >= start, data.r_peaks_original < end)] - start
         data_split.r_peaks = data_split.r_peaks[np.logical_and(data.r_peaks >= start, data.r_peaks < end)] - start
         data_split.notes = ann_notes
-        data_split.annotations = data.symbols[np.logical_and(data.r_peaks >= start, data.r_peaks < end)]
+        data_split.annotations = data.symbols[np.logical_and(data.r_peaks_original >= start, data.r_peaks_original < end)]
 
         if afib:
             data_split["class_index"] = 1
@@ -115,7 +119,7 @@ def split_recording(data, cut_len):
     return pd.DataFrame(data_splits)
 
 
-def load_dataset_scratch(record_names):
+def load_dataset_scratch(record_names, split_len):
     long_df = []
 
     for n in record_names:
@@ -148,7 +152,8 @@ def load_dataset_scratch(record_names):
     print("Completed reading")
 
     long_df = pd.DataFrame(long_df)
-    print(long_df.head())
+    long_df = long_df.dropna()
+    print(long_df.data.map(lambda x: x.shape))
 
     print("Processing Data")
     long_df = process_data(long_df)
@@ -158,11 +163,11 @@ def load_dataset_scratch(record_names):
 
     print("Cutting to short segments")
     for i, long_sample in long_df.iterrows():
-        short_dfs.append(split_recording(long_sample, 10))
+        short_dfs.append(split_recording(long_sample, split_len))
 
     short_df = pd.concat(short_dfs, ignore_index=True)
     print(short_df.head())
-    return short_dfs
+    return short_df
 
 
 def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
@@ -174,7 +179,7 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], bandpass_dict[x["fs"]]), axis=1)
     ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], notch_dict[x["fs"]]), axis=1)
 
-    ecg_data["data"] = ecg_data.apply(lambda x: resample(x["data"], resample_rate, x["fs"]), axis=1)
+    ecg_data["data"] = ecg_data.apply_parallel(lambda x: resample(x["data"], resample_rate, x["fs"]), axis=1)
     ecg_data["length"] = ecg_data["data"].map(lambda x: x.shape[-1])
     ecg_data["fs"] = resample_rate
 
@@ -182,7 +187,7 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     ecg_data["r_peaks_original"] = ecg_data["r_peaks_original"] * resample_rate/ecg_data["fs"]
 
     # Get r peak positions and heartrate
-    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks, detector=1)
+    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks)
     ecg_data["heartrate"] = ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60,
                                                        axis=1)
     # Get the rri feature
@@ -197,7 +202,7 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
 
 def load_dataset_pickle(f_name):
     try:
-        end_path = f"filtered_{f_name}.pk"
+        end_path = f"{f_name}.pk"
         ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
         return ecg_data
     except (OSError, FileNotFoundError) as e:
@@ -205,21 +210,24 @@ def load_dataset_pickle(f_name):
     return
 
 
-def load_dataset(save_name="dataframe.pk", force_reload=False, pt_range=None, sections_per_pt=None, split_size=30, disable_download=False, filter_func=None):
+def load_dataset(save_name="dataframe", force_reload=False, pt_range=(0, 11000), sections_per_pt=50, split_size=30, download=False):
     dataset = None
+
     if not force_reload:
         dataset = load_dataset_pickle(save_name)
-    if dataset is None:
-        pt_range = [0, 1000] if pt_range is None else pt_range
 
-        urls, filenames, record_names = find_files(pt_range)
-        load_dataset_scratch()
+    if dataset is None:
+        urls, filenames, record_names = find_files(pt_range, n_per_patient=sections_per_pt)
+
+        if download:
+            download_parallel(urls, filenames)
+
+        dataset = load_dataset_scratch(record_names, split_size)
+        dataset.to_pickle(os.path.join(dataset_path, f"{save_name}.pk"))
+
+    dataset = dataset[(dataset["ptID"] < pt_range[1]) & (dataset["ptID"] >= pt_range[0])]
+    return dataset
 
 
 if __name__ == "__main__":
-    urls, filepaths, record_names = find_files([0, 100], types=["atr", "dat", "hea"], n_per_patient=1)
-    # download_parallel(urls, filepaths)
-
-    ecg_df = load_dataset_scratch(record_names)
-    print("hi")
-
+    pass

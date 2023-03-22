@@ -4,12 +4,14 @@ import scipy.signal
 
 
 def filter_and_norm(x, sos):
+    from scipy.signal import sosfiltfilt
     x_filt = sosfiltfilt(sos, x, padlen=150)
     x_norm = (x_filt - x_filt.mean()) / x_filt.std()
     return x_norm
 
 
 def resample(x, resample_rate, orig_fs):
+    import scipy.signal
     resample_len = int(round(x.shape[-1] * resample_rate / orig_fs))
     return scipy.signal.resample(x, resample_len)
 

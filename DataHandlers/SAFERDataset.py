@@ -4,7 +4,7 @@ import scipy
 import wfdb
 import numpy as np
 from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum
-from DataProcessUtilities import *
+from DataHandlers.DataProcessUtilities import *
 
 import matplotlib
 matplotlib.use('TkAgg')

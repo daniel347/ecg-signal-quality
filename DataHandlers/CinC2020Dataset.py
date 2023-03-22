@@ -10,7 +10,7 @@ from .DiagEnum import DiagEnum, feas1DiagToEnum
 from .CinC2020Enums import Sex
 from tqdm import tqdm
 
-from DataProcessUtilities import *
+from DataHandlers.DataProcessUtilities import *
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -271,7 +271,7 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     ecg_data["fs"] = resample_rate
 
     # Get beat positions and heartrate
-    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks, detector=1)
+    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks)
     ecg_data["heartrate"] = ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60, axis=1)
 
     # Get the rri feature
