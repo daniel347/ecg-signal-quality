@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import scipy
@@ -6,7 +5,7 @@ import numpy as np
 
 import wfdb
 from scipy.io import loadmat
-from DiagEnum import DiagEnum, feas1DiagToEnum
+from DataHandlers.DiagEnum import DiagEnum
 from CinC2020Enums import Sex
 from tqdm import tqdm
 

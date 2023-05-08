@@ -1,11 +1,8 @@
-import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import scipy
-import numpy as np
-from enum import Enum
 import wfdb
-from DiagEnum import DiagEnum, feas1DiagToEnum
+from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum
 
 import matplotlib
 matplotlib.use('TkAgg')

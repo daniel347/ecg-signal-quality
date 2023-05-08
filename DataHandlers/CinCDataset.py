@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import scipy
 import numpy as np
-from DiagEnum import DiagEnum
+from DataHandlers.DiagEnum import DiagEnum
 
 # -------- Loading the datasets --------
 
