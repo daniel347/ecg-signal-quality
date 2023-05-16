@@ -155,9 +155,14 @@ class TransformerModel(nn.Module):
             )
 
             self.rri_pos_encoder = PositionalEncoding(n_rri_inp, dropout, device=device)
-            rri_encoder_layers = TransformerEncoderLayer(n_rri_inp, nhead, nhid, dropout)
-            self.rri_transformer = TransformerEncoder(rri_encoder_layers, nlayers)
-            self.rri_attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(n_rri_inp, ncls=ntoken if multiquery else 1)
+            self.rri_cross_mha = torch.nn.MultiheadAttention(ninp, nhead, kdim=ninp, vdim=ninp)
+            self.rri_layer_norm = nn.LayerNorm(ninp)
+            self.rri_linear = nn.Sequential(
+                nn.Linear(ninp, nhid),
+                nn.ReLU(),
+                nn.Linear(nhid, ninp)
+            )
+            self.rri_out_layer_norm = nn.LayerNorm(ninp)
 
         self.enable_spec = enable_spec
         if enable_spec:
@@ -185,7 +190,7 @@ class TransformerModel(nn.Module):
             self.attention_pooling = lambda x: torch.mean(x, dim=-2) # LearnedAggregation(ninp, ncls=ntoken if multiquery else 1)
             self.layer_norm = nn.LayerNorm(ninp)
 
-        decoder_input_size = (ninp if enable_spec else 0) + (n_rri_inp if enable_rri else 0)
+        decoder_input_size = (ninp if enable_spec else 0)
 
         self.decoder1 = nn.Linear(decoder_input_size, 128)
         self.dropout1 = nn.Dropout(dropout)
@@ -195,22 +200,30 @@ class TransformerModel(nn.Module):
 
     def fix_transformer_params(self, fix_spec=True, fix_rri=True):
 
-        if self.enable_rri:
-            for param in self.rri_transformer.parameters():
-                param.requires_grad = (not fix_rri)
+        for param in self.rri_cross_mha.parameters():
+            param.requires_grad = (not fix_rri)
 
-            for param in self.rri_conv_net.parameters():
-                param.requires_grad = (not fix_rri)
+        for param in self.rri_conv_net.parameters():
+            param.requires_grad = (not fix_rri)
 
-        if self.enable_spec:
-            for param in self.stft_layer_norm.parameters():
-                param.requires_grad = (not fix_spec)
+        for param in self.rri_linear.parameters():
+            param.requires_grad = (not fix_rri)
 
-            for param in self.stft_expand_layer.parameters():
-                param.requires_grad = (not fix_spec)
+        for param in self.rri_layer_norm.parameters():
+            param.requires_grad = (not fix_rri)
 
-            for param in self.transformer_encoder.parameters():
-                param.requires_grad = (not fix_spec)
+        for param in self.rri_out_layer_norm.parameters():
+            param.requires_grad = (not fix_rri)
+
+
+        for param in self.stft_layer_norm.parameters():
+            param.requires_grad = (not fix_spec)
+
+        for param in self.stft_expand_layer.parameters():
+            param.requires_grad = (not fix_spec)
+
+        for param in self.transformer_encoder.parameters():
+            param.requires_grad = (not fix_spec)
 
     def init_weights(self):
         initrange = 0.1
@@ -241,35 +254,35 @@ class TransformerModel(nn.Module):
 
         return padding
 
+    def pad_queries_to_0(self, Q, rri_len):
+        padding = torch.arange(Q.shape[0], device=self.device)
+        padding = padding.repeat([Q.shape[1], Q.shape[2], 1]).permute([2, 0, 1])
+        Q[padding >= rri_len[None, :, None]] = 0
+        return Q
+
+
     def forward(self, src, rri, rri_len=None):
 
-        if self.enable_spec:
-            src = self.stft_and_reshape(src)
-            src = self.pos_encoder(src)
+        rri = torch.unsqueeze(rri, dim=1)
+        rri = self.rri_conv_net(rri)
+        rri = torch.permute(rri, [2, 0, 1])
+        rri = self.rri_pos_encoder(rri)
 
-            output = self.transformer_encoder(src)
-            output = torch.transpose(output, 0, 1)
-            output = self.attention_pooling(output)
+        src = self.stft_and_reshape(src)
+        src = self.pos_encoder(src)
 
-        if self.enable_rri:
-            rri = torch.unsqueeze(rri, dim=1)
-            rri = self.rri_conv_net(rri)
+        if rri_len is not None:
+            rri = self.pad_queries_to_0(rri, rri_len)
 
-            rri = torch.permute(rri, [2, 0, 1])
+        # Some cross attention!
+        src = self.rri_cross_mha(rri, src, src)[0]
+        src = self.rri_layer_norm(src)
+        src = self.rri_linear(src) + src
+        src = self.rri_out_layer_norm(src)
 
-            if rri_len is None:
-                rri_output = self.rri_transformer(rri)
-            else:
-                padding = self.construct_padding_mask(rri.shape[1], rri.shape[0],  rri_len)
-                rri_output = self.rri_transformer(rri, src_key_padding_mask=padding)
-
-            rri_output = torch.transpose(rri_output, 0, 1)
-            rri_output = self.rri_attention_pooling(rri_output)
-
-        if self.enable_rri and self.enable_spec:
-            output = torch.concat([output, rri_output], dim=-1)
-        elif self.enable_rri:
-            output = rri_output
+        output = self.transformer_encoder(src)
+        output = torch.transpose(output, 0, 1)
+        output = self.attention_pooling(output)
 
         output = self.decoder1(output)
         output = nn.functional.relu(output)

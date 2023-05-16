@@ -32,32 +32,41 @@ def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
 def generate_af_class_labels(dataset):
     """See notes/ emails for explaination of logic"""
     dataset["class_index"] = -1
-    # If not tagged assume Normal
-    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 1) & (dataset["measDiag"] == DiagEnum.Undecided), "class_index"] = 0
-
-    # The first review rejection is Normal (more or less)
-    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["ffReview_sent"] == 1) & (dataset["ffReview_remain"] == 0) & (dataset["feas"] == 1), "class_index"] = 0
-
-    # dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 2), "class_index"] = 2 # Anything tagged in feas 2 goes to other
-
-    dataset.loc[dataset["measDiag"] == DiagEnum.AF, "class_index"] = 1  # The cardiologist has said AF
-
-    # Anything thats got this far is probably dodgy in some way
-    dataset.loc[dataset["measDiag"].isin([DiagEnum.NoAF, DiagEnum.HeartBlock]), "class_index"] = 2
-
-    dataset.loc[(dataset["measDiag"].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])), "class_index"] = -1
 
     dataset["measDiagAgree"] = (dataset["measDiagRev1"] == dataset["measDiagRev2"]) |\
                                (dataset["measDiagRev1"] == DiagEnum.Undecided) |\
                                (dataset["measDiagRev2"] == DiagEnum.Undecided)
     dataset.loc[~dataset["measDiagAgree"], "class_index"] = -1
+    print(f"cardiologists disagree {len(dataset.loc[~dataset['measDiagAgree']].index)}")
 
-    dataset = dataset[dataset["class_index"] != -1]
+    # If not tagged assume Normal
+    print(f"Not tagged {len(dataset.loc[(dataset['not_tagged_ign_wide_qrs'] == 1) & (dataset['measDiag'] == DiagEnum.Undecided) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 1) & (dataset["measDiag"] == DiagEnum.Undecided), "class_index"] = 0
 
-    return dataset
+    # The first review rejection is Normal (more or less)
+    print(f"Not first review rejection {len(dataset.loc[(dataset['not_tagged_ign_wide_qrs'] == 0) & (dataset['feas'] == 1) & (dataset['ffReview_sent'] == 1) & (dataset['ffReview_remain'] == 0)  & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 1) & (dataset["ffReview_sent"] == 1) & (dataset["ffReview_remain"] == 0), "class_index"] = 0
+
+    # dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 2), "class_index"] = 2 # Anything tagged in feas 2 goes to other
+
+    print(f"AF by cardiologist {len(dataset.loc[(dataset['measDiag'] == DiagEnum.AF) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[dataset["measDiag"] == DiagEnum.AF, "class_index"] = 1  # The cardiologist has said AF
+
+    # Anything that's got this far is probably dodgy in some way
+    print(f"No AF/Heartblock by cardiologist {len(dataset.loc[(dataset['measDiag'].isin([DiagEnum.NoAF, DiagEnum.HeartBlock])) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[dataset["measDiag"].isin([DiagEnum.NoAF, DiagEnum.HeartBlock]), "class_index"] = 2
+
+    print(f"poor quality/cep by cardiologist {len(dataset.loc[(dataset['measDiag'].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[(dataset["measDiag"].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])), "class_index"] = -1
+
+
+    # dataset = dataset[dataset["class_index"] != -1]
+
+    return dataset[dataset["class_index"] != -1]
 
 
 def add_ecg_class_counts(safer_pt_data, safer_ecg_data):
+    safer_pt_data.index = safer_pt_data["ptID"]
     safer_pt_data["noNormalRecs"] = safer_ecg_data[safer_ecg_data["class_index"] == 0]["ptID"].value_counts()
     safer_pt_data["noAFRecs"] = safer_ecg_data[safer_ecg_data["class_index"] == 1]["ptID"].value_counts()
     safer_pt_data["noOtherRecs"] = safer_ecg_data[safer_ecg_data["class_index"] == 2]["ptID"].value_counts()
@@ -122,14 +131,14 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
         feas2_ecg_data["r_peaks"] = feas2_ecg_data.apply(get_r_peaks, axis=1)
     """
 
-    feas2_ecg_data["heartrate"] = feas2_ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / 300)) * 60, axis=1)
+    feas2_ecg_data["heartrate"] = feas2_ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / resample_rate)) * 60, axis=1)
 
     # Get the rri feature
     feas2_ecg_data["rri_feature"] = (feas2_ecg_data["r_peaks"] / resample_rate).map(lambda x: get_rri_feature(x, 60))
     fewer_5_beats = feas2_ecg_data["rri_feature"].map(lambda x: np.sum(x == 0) > 55)
     feas2_ecg_data = feas2_ecg_data[~fewer_5_beats]
     feas2_ecg_data["rri_len"] = feas2_ecg_data["rri_feature"].map(lambda x: x[x > 0].shape[-1])
-    feas2_ecg_data["rri_feature"] = normalise_rri_feature(feas2_ecg_data["rri_feature"])
+    # feas2_ecg_data["rri_feature"] = normalise_rri_feature(feas2_ecg_data["rri_feature"])
 
     return feas2_ecg_data
 

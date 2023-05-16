@@ -82,7 +82,7 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     fewer_5_beats = ecg_data["rri_feature"].map(lambda x: np.sum(x == 0) > 55)
     ecg_data = ecg_data[~fewer_5_beats]
     ecg_data["rri_len"] = ecg_data["rri_feature"].map(lambda x: x[x > 0].shape[-1])
-    ecg_data["rri_feature"] = normalise_rri_feature(ecg_data["rri_feature"])
+    # ecg_data["rri_feature"] = normalise_rri_feature(ecg_data)
 
     return ecg_data
 

@@ -36,13 +36,16 @@ def get_r_peaks(x):
     return np.array(info["ECG_R_Peaks"])
 
 
-def normalise_rri_feature(feature):
+def normalise_rri_feature(ecg_data):
     # Normalise the RRI features
-    feature_norm = feature.map(lambda x: x[x > 0])
+
+    feature_norm = ecg_data.apply(lambda x: x["rri_feature"][:x["rri_len"]], axis=1)
     mean_feature = feature_norm.map(lambda x: x.mean()).mean()
     std_feature = feature_norm.map(lambda x: x.std()).mean()
 
-    return (feature - mean_feature) / std_feature
+    print(f"rri normalisation mean: {mean_feature} standard deviation: {std_feature}")
+
+    return (ecg_data["rri_feature"] - mean_feature) / std_feature
 
 
 def validate_r_peaks(x):

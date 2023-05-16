@@ -208,10 +208,12 @@ def split_st_petersburg_file(filename, data, split_len):
             # Add in SVPB
             diagnosis.append(284470004)
 
-        for c in "nQFjB":
+        for c in "njeEFBQ":
             if c in ann_dict.keys():
                 # discard this segment
-                discard = True
+                # discard = True
+                diagnosis.append(0)
+
         if not discard:
             diagnoses.append(diagnosis)
             data_splits.append(data[start:end])
@@ -241,9 +243,9 @@ def load_dataset_scratch(process, ecg_range, ecg_meas_diag, save_name):
     ecg_data = ecg_data[~ecg_data["data"].map(lambda x: np.any(np.isnan(x)))]
     ecg_data.dropna(subset=["data"], inplace=True)
 
-    # keep only the 27 classes of data used in the challenge
+    # keep only the 27 classes of data used in the challenge - No need I think everything can go in other
     mapper = CinC2020DiagMapper()
-    ecg_data = keep_challenge_diagnoses(ecg_data, mapper)
+    # ecg_data = keep_challenge_diagnoses(ecg_data, mapper)
     ecg_data = chal_diag_to_safer_diag(ecg_data, mapper)
     ecg_data = safer_diag_to_class_list(ecg_data)
 
@@ -279,7 +281,7 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     fewer_5_beats = ecg_data["rri_feature"].map(lambda x: np.sum(x == 0) > 15)
     ecg_data = ecg_data[~fewer_5_beats]
     ecg_data["rri_len"] = ecg_data["rri_feature"].map(lambda x: x[x > 0].shape[-1])
-    ecg_data["rri_feature"] = normalise_rri_feature(ecg_data["rri_feature"])
+    # ecg_data["rri_feature"] = normalise_rri_feature(ecg_data["rri_feature"])
 
     ecg_data["dataset"] = ecg_data["filepath"].map(lambda x: x.split(os.sep)[-3])
 
