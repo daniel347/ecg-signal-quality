@@ -22,8 +22,8 @@ def plot_ecg_spectrogram(x, fs=300, n_split=1, cut_range=None):
 
     fig, ax = plt.subplots(n_split, 1, figsize=(12, 5), squeeze=False)
     for j in range(n_split):
-        ax[j][0].imshow(np.flipud(stft[:, cuts[j]:cuts[j+1]]), extent=[time_axis[cuts[j]], time_axis[cuts[j+1]], freq_axis[0], freq_axis[-1]], aspect=0.02)
-        ax[j][0].set_xlabel("Time")
+        ax[j][0].imshow(np.flipud(stft[:, cuts[j]:cuts[j+1]]), extent=[time_axis[cuts[j]], time_axis[cuts[j+1]], freq_axis[0], freq_axis[-1]], aspect="auto")
+        ax[-1][0].set_xlabel("Time")
 
 
 def plot_ecg_poincare(rri):
@@ -43,7 +43,7 @@ def plot_ecg_drr(rri):
     plt.show()
 
 
-def plot_ecg(x, fs=300, n_split=1, r_peaks=None, attention=None, num_segments=None, figsize=(12, 5)):
+def plot_ecg(x, fs=300, n_split=1, r_peaks=None, attention=None, num_segments=None, figsize=(12, 5), export_quality=False):
     sample_len = x.shape[0]
     time_axis = np.arange(sample_len)/fs
 
@@ -51,7 +51,7 @@ def plot_ecg(x, fs=300, n_split=1, r_peaks=None, attention=None, num_segments=No
 
     y_step = 1
 
-    fig, ax = plt.subplots(n_split, 1, figsize=figsize, squeeze=False)
+    fig, ax = plt.subplots(n_split, 1, figsize=figsize, squeeze=False, dpi=(250 if export_quality else 75))
     for j in range(n_split):
         ax[j][0].plot(time_axis[cuts[j]:cuts[j+1]], x[cuts[j]:cuts[j+1]])
 
@@ -69,7 +69,7 @@ def plot_ecg(x, fs=300, n_split=1, r_peaks=None, attention=None, num_segments=No
                                  time_axis[math.floor((i+1)*attention_step)], color='green',
                                  alpha=alpha[i])
 
-        ax[j][0].set_xlabel("Time")
+        ax[-1][0].set_xlabel("Time (s)")
         ax[j][0].set_xlim((time_axis[cuts[j]], time_axis[cuts[j+1]]))
 
         t_s = time_axis[cuts[j]]
