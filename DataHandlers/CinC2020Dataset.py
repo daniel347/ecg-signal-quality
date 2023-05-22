@@ -290,7 +290,7 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
 
 def load_dataset_pickle(process, f_name, force_reprocess=False):
     try:
-        end_path = f"training/filtered_{f_name}.pk" if (process and not force_reprocess) else f"ECGs/raw_{f_name}.pk"
+        end_path = f"training/filtered_{f_name}.pk" if (process and not force_reprocess) else f"training/raw_{f_name}.pk"
         ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
 
         if force_reprocess:

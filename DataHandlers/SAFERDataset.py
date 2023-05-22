@@ -32,33 +32,32 @@ def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
 def generate_af_class_labels(dataset):
     """See notes/ emails for explaination of logic"""
     dataset["class_index"] = -1
+    # print(f"cardiologists disagree {len(dataset.loc[~dataset['measDiagAgree']].index)}")
+
+    # If not tagged assume Normal
+    # print(f"Not tagged {len(dataset.loc[(dataset['not_tagged_ign_wide_qrs'] == 1) & (dataset['measDiag'] == DiagEnum.Undecided) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 1) & (dataset["measDiag"] == DiagEnum.Undecided), "class_index"] = 0
+
+    # The first review rejection is Normal (more or less)
+    # print(f"Not first review rejection {len(dataset.loc[(dataset['not_tagged_ign_wide_qrs'] == 0) & (dataset['feas'] == 1) & (dataset['ffReview_sent'] == 1) & (dataset['ffReview_remain'] == 0)  & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 1) & (dataset["ffReview_sent"] == 1) & (dataset["ffReview_remain"] == 0), "class_index"] = 0
+
+    # dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 2), "class_index"] = 2 # Anything tagged in feas 2 goes to other
+
+    # print(f"AF by cardiologist {len(dataset.loc[(dataset['measDiag'] == DiagEnum.AF) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[dataset["measDiag"] == DiagEnum.AF, "class_index"] = 1  # The cardiologist has said AF
+
+    # Anything that's got this far is probably dodgy in some way
+    # print(f"No AF/Heartblock by cardiologist {len(dataset.loc[(dataset['measDiag'].isin([DiagEnum.NoAF, DiagEnum.HeartBlock])) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[dataset["measDiag"].isin([DiagEnum.NoAF, DiagEnum.HeartBlock]), "class_index"] = 2
+
+    # print(f"poor quality/cep by cardiologist {len(dataset.loc[(dataset['measDiag'].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])) & (dataset['measDiagAgree'])].index)}")
+    dataset.loc[(dataset["measDiag"].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])), "class_index"] = -1
 
     dataset["measDiagAgree"] = (dataset["measDiagRev1"] == dataset["measDiagRev2"]) |\
                                (dataset["measDiagRev1"] == DiagEnum.Undecided) |\
                                (dataset["measDiagRev2"] == DiagEnum.Undecided)
     dataset.loc[~dataset["measDiagAgree"], "class_index"] = -1
-    print(f"cardiologists disagree {len(dataset.loc[~dataset['measDiagAgree']].index)}")
-
-    # If not tagged assume Normal
-    print(f"Not tagged {len(dataset.loc[(dataset['not_tagged_ign_wide_qrs'] == 1) & (dataset['measDiag'] == DiagEnum.Undecided) & (dataset['measDiagAgree'])].index)}")
-    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 1) & (dataset["measDiag"] == DiagEnum.Undecided), "class_index"] = 0
-
-    # The first review rejection is Normal (more or less)
-    print(f"Not first review rejection {len(dataset.loc[(dataset['not_tagged_ign_wide_qrs'] == 0) & (dataset['feas'] == 1) & (dataset['ffReview_sent'] == 1) & (dataset['ffReview_remain'] == 0)  & (dataset['measDiagAgree'])].index)}")
-    dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 1) & (dataset["ffReview_sent"] == 1) & (dataset["ffReview_remain"] == 0), "class_index"] = 0
-
-    # dataset.loc[(dataset["not_tagged_ign_wide_qrs"] == 0) & (dataset["feas"] == 2), "class_index"] = 2 # Anything tagged in feas 2 goes to other
-
-    print(f"AF by cardiologist {len(dataset.loc[(dataset['measDiag'] == DiagEnum.AF) & (dataset['measDiagAgree'])].index)}")
-    dataset.loc[dataset["measDiag"] == DiagEnum.AF, "class_index"] = 1  # The cardiologist has said AF
-
-    # Anything that's got this far is probably dodgy in some way
-    print(f"No AF/Heartblock by cardiologist {len(dataset.loc[(dataset['measDiag'].isin([DiagEnum.NoAF, DiagEnum.HeartBlock])) & (dataset['measDiagAgree'])].index)}")
-    dataset.loc[dataset["measDiag"].isin([DiagEnum.NoAF, DiagEnum.HeartBlock]), "class_index"] = 2
-
-    print(f"poor quality/cep by cardiologist {len(dataset.loc[(dataset['measDiag'].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])) & (dataset['measDiagAgree'])].index)}")
-    dataset.loc[(dataset["measDiag"].isin([DiagEnum.CannotExcludePathology, DiagEnum.PoorQuality])), "class_index"] = -1
-
 
     # dataset = dataset[dataset["class_index"] != -1]
 
@@ -196,6 +195,7 @@ def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
     try:
         pt_data = load_pt_dataset(feas, 10000)
         end_path = f"ECGs/filtered_{f_name}.pk" if (process and not force_reprocess) else f"ECGs/raw_{f_name}.pk"
+        print(os.path.join(dataset_path, end_path))
 
         ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
 
