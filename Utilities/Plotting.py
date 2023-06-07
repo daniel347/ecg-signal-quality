@@ -56,14 +56,8 @@ def plot_ecg_drr(rri, rri_len, figsize=(4, 4), export_quality=False):
     fig.tight_layout()
     plt.show()
 
-def plot_confusion_matrix(conf_mat, labels):
-    fig, ax = plt.subplots(figsize=(6, 6))
 
-    ConfusionMatrixDisplay(conf_mat, display_labels=labels).plot(cmap="GnBu", ax=ax, colorbar=False)
-    fig.tight_layout()
-    plt.show()
-
-def plot_confusion_matrix_2(confusion_matrix, labels, colour='YlOrBr'):
+def plot_confusion_matrix(confusion_matrix, labels, colour='YlOrBr'):
     # Normalize the confusion matrix
     normalized_matrix = confusion_matrix.astype('float') / confusion_matrix.sum(axis=1)[:, np.newaxis]
 
@@ -146,6 +140,7 @@ def plot_ecg(x, fs=300, n_split=1, r_peaks=None, attention=None, num_segments=No
         ax[j][0].grid(which='minor', linestyle='-', linewidth='0.5', color='lightgray')
 
     fig.tight_layout()
+
 
 def plot_ecg_with_attention(x, fs=300, n_split=1, r_peaks=None, attention=None, num_segments=None, figsize=(12, 8), export_quality=False, save_name=None):
     sample_len = x.shape[0]
