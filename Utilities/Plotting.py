@@ -152,16 +152,19 @@ def plot_ecg_with_attention(x, fs=300, n_split=1, r_peaks=None, attention=None, 
     time_axis = np.arange(sample_len)/fs
 
     cuts = np.round(np.linspace(0, sample_len-1, n_split+1)).astype(int)
+    n_heads = 0
+    if attention is not None:
+        n_heads = attention.shape[0]
 
     y_step = 1
 
-    fig, ax = plt.subplots(n_split * 2, 1, figsize=figsize, squeeze=False, dpi=(250 if export_quality else 75))
+    fig, ax = plt.subplots(n_split * (n_heads + 1), 1, figsize=figsize, squeeze=False, dpi=(250 if export_quality else 75))
     for j in range(n_split):
-        ax[j*2][0].plot(time_axis[cuts[j]:cuts[j+1]], x[cuts[j]:cuts[j+1]])
+        ax[j*(n_heads + 1)][0].plot(time_axis[cuts[j]:cuts[j+1]], x[cuts[j]:cuts[j+1]])
 
         if r_peaks is not None:
             r_peaks = r_peaks[np.logical_and(r_peaks < sample_len, r_peaks >= 0)]
-            ax[j*2][0].plot(time_axis[r_peaks], x[r_peaks], "x")
+            ax[j*(n_heads + 1)][0].plot(time_axis[r_peaks], x[r_peaks], "x")
 
         if attention is not None:
             print("Plotting attention")
@@ -169,11 +172,12 @@ def plot_ecg_with_attention(x, fs=300, n_split=1, r_peaks=None, attention=None, 
             att_start = int(round((attention.shape[-1]/n_split) * j))
             att_end = int(round((attention.shape[-1]/n_split) * (j + 1)))
 
-            ax[j*2 + 1][0].imshow(attention[:, att_start:att_end], aspect="auto")
-            ax[j*2 + 1][0].set_axis_off()
+            for h in range(n_heads):
+                ax[j*(n_heads + 1) + 1 + h][0].imshow(attention[h, :, att_start:att_end], aspect="auto")
+                ax[j*(n_heads + 1) + 1 + h][0].set_axis_off()
 
-        ax[-2][0].set_xlabel("Time (s)")  # Only set the last axis label
-        ax[j*2][0].set_xlim((time_axis[cuts[j]], time_axis[cuts[j+1]]))
+        ax[-(n_heads + 1)][0].set_xlabel("Time (s)")  # Only set the last axis label
+        ax[j*(n_heads + 1)][0].set_xlim((time_axis[cuts[j]], time_axis[cuts[j+1]]))
 
         t_s = time_axis[cuts[j]]
         t_f = time_axis[cuts[j+1]]
@@ -186,16 +190,16 @@ def plot_ecg_with_attention(x, fs=300, n_split=1, r_peaks=None, attention=None, 
         time_labels = np.round(time_ticks).astype(int).astype(str)
         time_labels[decimal_labels] = ""
 
-        ax[j*2][0].set_ylim((x.min()-y_step, x.max()+y_step))
+        ax[j*(n_heads + 1)][0].set_ylim((x.min()-y_step, x.max()+y_step))
 
-        ax[j*2][0].set_xticks(time_ticks, time_labels)
-        ax[j*2][0].set_yticklabels([])
+        ax[j*(n_heads + 1)][0].set_xticks(time_ticks, time_labels)
+        ax[j*(n_heads + 1)][0].set_yticklabels([])
 
 
-        ax[j*2][0].xaxis.set_minor_locator(AutoMinorLocator(5))
-        ax[j*2][0].yaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[j*(n_heads + 1)][0].xaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[j*(n_heads + 1)][0].yaxis.set_minor_locator(AutoMinorLocator(5))
 
-        ax[j*2][0].grid(which='major', linestyle='-', linewidth='0.5', color='black')
-        ax[j*2][0].grid(which='minor', linestyle='-', linewidth='0.5', color='lightgray')
+        ax[j*(n_heads + 1)][0].grid(which='major', linestyle='-', linewidth='0.5', color='black')
+        ax[j*(n_heads + 1)][0].grid(which='minor', linestyle='-', linewidth='0.5', color='lightgray')
 
     fig.tight_layout()
