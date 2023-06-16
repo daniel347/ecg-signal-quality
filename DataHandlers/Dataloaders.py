@@ -1,6 +1,6 @@
 import torch
-import DataAugmentations
-from DataProcessUtilities import *
+import DataHandlers.DataAugmentations as DataAugmentations
+from DataHandlers.DataProcessUtilities import *
 
 import threading
 

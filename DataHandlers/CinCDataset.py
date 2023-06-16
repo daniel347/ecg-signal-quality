@@ -37,7 +37,8 @@ def load_cinc_dataset_pickle():
     try:
         dataset = pd.read_pickle(cinc_pk_path)
         return dataset
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError) as e:
+        print(e)
         return
 
 
@@ -49,12 +50,18 @@ def load_cinc_dataset(force_reload=False):
         print("Failed to load from pickle, regenerating files")
         dataset = load_cinc_dataset_scratch()
 
+    print("Raw data loaded")
+
     dataset["length"] = dataset["data"].map(lambda arr: arr.shape[-1])
     dataset["data"] = dataset["data"].map(lambda d: d[0])
     dataset["fs"] = 300
 
+    print("Length an fs added")
+
     dataset["measDiag"] = dataset["class"].map(generate_safer_style_label)
     dataset["class_index"] = (dataset["class"] == DiagEnum.PoorQuality).astype(int)
+
+    print("MeasDiag and class index added")
 
     dataset = process_data(dataset)
 
@@ -69,12 +76,17 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     ecg_data["data"] = ecg_data["data"].map(lambda x: filter_and_norm(x, sos))
     ecg_data["data"] = ecg_data["data"].map(lambda x: filter_and_norm(x, sos_notch))
 
+    print("Filtered")
+
     if resample_rate != 300:
         ecg_data["data"] = ecg_data["data"].map(lambda x: resample(x, resample_rate, 300))
         ecg_data["length"] = ecg_data["data"].map(lambda x: x.shape[-1])
 
+    print("Resampled")
+
     # Get beat positions and heartrate
-    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks)
+    print("Detecting R-peaks")
+    ecg_data["r_peaks"] = ecg_data.apply(get_r_peaks, axis=1)
     ecg_data["heartrate"] = ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60, axis=1)
 
     # Get the rri feature

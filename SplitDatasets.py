@@ -31,10 +31,10 @@ sys.modules["CinCDataset"] = CinCDataset
 
 
 # ====  Options  ====
-dataset_name = "cinc_2020"  # One of cinc_2020, cinc_2027, safer
+dataset_name = "safer_feas1"  # One of cinc_2020, cinc_2027, safer_feas1
 
-dataset_input_name = ""
-dataset_output_name = "19_May_cinc_2017_train"
+dataset_input_name = "dataframe_2"
+dataset_output_name = "16_Jun_safer_split_script_test"
 
 test_size = 0.15
 val_size = 0.15
@@ -57,6 +57,10 @@ if dataset_name == "cinc_2020":
     # CinC 2020 dataset
     val_dataset = df[df["dataset"] == "cpsc_2018"]
     train_dataset, test_dataset = train_test_split(df[df["dataset"] != "cpsc_2018"], test_size=test_size, stratify=df[df["dataset"] != "cpsc_2018"]["class_index"])
+
+    print(train_dataset["class_index"].value_counts())
+    print(test_dataset["class_index"].value_counts())
+    print(val_dataset["class_index"].value_counts())
 
     # Save the CinC2017 data splits for consistent results!
     train_dataset.to_pickle(f"TrainedModels/{dataset_output_name}_train.pk")
@@ -90,6 +94,10 @@ elif dataset_name == "cinc_2017":
                                                            test_size=val_size / (test_size + val_size),
                                                            stratify=test_val["class_index"])
 
+    print(train_dataset_2017["class_index"].value_counts())
+    print(test_dataset_2017["class_index"].value_counts())
+    print(val_dataset_2017["class_index"].value_counts())
+
     train_dataset_2017.to_pickle(f"TrainedModels/{dataset_output_name}_train.pk")
     test_dataset_2017.to_pickle(f"TrainedModels/{dataset_output_name}_test.pk")
     val_dataset_2017.to_pickle(f"TrainedModels/{dataset_output_name}_val.pk")
@@ -108,6 +116,8 @@ elif dataset_name == "safer_feas1":
 
     pt_data, ecg_data = prepare_safer_data(pt_data, ecg_data)
 
+    # TODO: Should this use the new system -
+    #  Even though I did not use it in my experiments?
     def generate_patient_splits(pt_data, test_frac, val_frac):
         train_patients = []
         test_patients = []
