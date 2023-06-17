@@ -3,7 +3,11 @@ import sys
 from DataHandlers.DiagEnum import DiagEnum
 import DataHandlers.CinC2020Dataset as CinC2020Dataset
 import DataHandlers.CinC2020Enums
+import DataHandlers.SAFERDataset as SAFERDataset
+import DataHandlers.CinCDataset as CinCDataset
 import DataHandlers.MITNSTDataset as MITNSTDataset
+
+from sklearn.metrics import confusion_matrix
 
 from torch.utils.data import Dataset, DataLoader
 
@@ -15,6 +19,10 @@ from Utilities.Training import *
 import torch
 from sklearn.model_selection import train_test_split
 from Utilities.Predict import *
+import Utilities.constants as constants
+import os
+
+from DataHandlers.Dataloaders import RRiECGDataset as Dataset
 
 # A fudge because I moved the files
 sys.modules["SAFERDataset"] = SAFERDataset
@@ -26,28 +34,12 @@ sys.modules["CinCDataset"] = CinCDataset
 
 # ====  Options  ====
 enable_cuda = True
-model_name = "Transformer_24_May_cinc_2017_train_attention_pooling_augmentation_smoothing"
-dataset_split_name = "19_May_cinc_2017"
-data_is_safer_pt = False  # True if dataset_split_name contains patients from safer
+model_name = "Transformer_16_June_safer_train_attention_pooling_augmentation_smoothing"
+dataset_path = os.path.join(constants.feas1_path, "ECGs/feas1_27_mar_val.pk" )
+data_is_safer_pt = False  # True if dataset_split_name contains patients from safer rather than ECGs
 
 # =======
 
-def load_feas1_chunk_range(chunk_range=(0, num_chunks)):
-    ecg_data = []
-    pt_data = []
-
-    for chunk_num in range(chunk_range[0], chunk_range[1]):
-        feas1_pt_data, feas1_ecg_data = SAFERDataset.load_feas_dataset(1, f"dataframe_{chunk_num}.pk")
-
-        ecg_data.append(feas1_ecg_data)
-        pt_data.append(feas1_pt_data)
-
-    feas1_ecg_data = pd.concat(ecg_data)
-    feas1_ecg_data["feas"] = 1
-    feas1_ecg_data["rri_len"] = feas1_ecg_data["rri_feature"].map(lambda x: x[x > 0].shape[-1])
-    feas1_pt_data = pd.concat(pt_data).drop_duplicates()
-
-    return feas1_ecg_data, feas1_pt_data
 
 if torch.cuda.is_available() and enable_cuda:
     print("Using Cuda")
@@ -57,13 +49,18 @@ else:
     device = torch.device("cpu")
 
 if data_is_safer_pt:
+    dataset_pts = pd.read_pickle(dataset_path)
+    # We only use patient lists for the entirety of feas1 because its too big
+    # See training code using DatasetSequenceIterator to use this
+    raise NotImplementedError
 
 else:
-    val_dataset = pd.read_pickle(f"TrainedModels/{dataset_split_name}_val.pk")
+    dataset = pd.read_pickle(dataset_path)
+    print(dataset.head())
 
 
-torch_dataset_val = Dataset(val_dataset)
-val_dataloader = DataLoader(torch_dataset_val, batch_size=128, shuffle=True, pin_memory=True)
+torch_dataset = Dataset(dataset)
+val_dataloader = DataLoader(torch_dataset, batch_size=128, shuffle=True, pin_memory=True)
 
 n_head = 4
 n_fft = 128
@@ -74,7 +71,12 @@ model = TransformerModel(3, embed_dim, n_head, 512, 6, n_fft, n_inp_rri, device=
 model = model.to(device)
 model.load_state_dict(torch.load(f"TrainedModels/{model_name}.pt", map_location=device))
 
-predictions, true_labels = get_predictions_transformer(model, val_dataloader, val_dataset, device)
+predictions, true_labels = get_predictions_transformer(model, val_dataloader, dataset, device)
+
+conf_mat = confusion_matrix(true_labels, np.argmax(predictions, axis=1))
+print_results(conf_mat)
+
+
 
 
 

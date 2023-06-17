@@ -18,8 +18,11 @@ from torch.utils.data import Dataset
 sys.modules["SAFERDataset"] = SAFERDataset
 import math
 
+"""
+AF Classification
+"""
 
-class TransformerDataset(torch.utils.data.Dataset):
+class RRiECGDataset(torch.utils.data.Dataset):
     'Characterizes a dataset for PyTorch'
     def __init__(self, dataset):
         'Initialization'
@@ -108,7 +111,7 @@ class DatasetSequenceIterator:
             self.next_dataset = self.dl_functions[self.dl_index + 1]()
             self.next_dataset = self.filter(self.next_dataset)
 
-            torch_dataset = Dataset(self.next_dataset)
+            torch_dataset = RRiECGDataset(self.next_dataset)
             self.next_dataloader_iterator = iter(DataLoader(torch_dataset, batch_size=self.batch_sizes[self.dl_index], shuffle=True, pin_memory=True))
             self.next_dataset_loaded = True
         else:
@@ -172,3 +175,29 @@ def prepare_safer_data(pt_data, ecg_data):
     pt_data = SAFERDataset.add_ecg_class_counts(pt_data, ecg_data)
 
     return pt_data, ecg_data
+
+
+"""
+Noise Classification
+"""
+
+class ECGDataset(torch.utils.data.Dataset):
+  'Characterizes a dataset for PyTorch'
+  def __init__(self, dataset):
+        'Initialization'
+        self.dataset = dataset
+
+  def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.dataset.index)
+
+  def __getitem__(self, index):
+        'Generates one sample of data'
+        # Select sample
+        row = self.dataset.iloc[index]
+
+        X = row["data"]
+        y = row["class_index"]
+        ind = row.name
+
+        return X, y, ind

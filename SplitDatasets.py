@@ -11,10 +11,8 @@ import os
 
 import Utilities.constants as constants
 
-from torch.utils.data import Dataset, DataLoader
-
-from Models.SpectrogramTransformerAttentionPooling import TransformerModel
-from torch.optim.lr_scheduler import LambdaLR
+from DataHandlers.Dataloaders import load_feas1_chunk_range, prepare_safer_data
+from DataHandlers.Dataloaders import RRiECGDataset as Dataset
 
 from Utilities.Training import *
 
@@ -34,7 +32,7 @@ sys.modules["CinCDataset"] = CinCDataset
 dataset_name = "safer_feas1"  # One of cinc_2020, cinc_2027, safer_feas1
 
 dataset_input_name = "dataframe_2"
-dataset_output_name = "16_Jun_safer_split_script_test"
+dataset_output_name = "16_Jun_safer"
 
 test_size = 0.15
 val_size = 0.15
@@ -114,8 +112,6 @@ elif dataset_name == "safer_feas1":
     ecg_data["length"] = 9120
     ecg_data["rri_len"] = 20
 
-    pt_data, ecg_data = prepare_safer_data(pt_data, ecg_data)
-
     # TODO: Should this use the new system -
     #  Even though I did not use it in my experiments?
     def generate_patient_splits(pt_data, test_frac, val_frac):
@@ -165,6 +161,22 @@ elif dataset_name == "safer_feas1":
     print(f"Train AF: {train_pts['noAFRecs'].sum()} Normal: {train_pts['noNormalRecs'].sum()} Other: {train_pts['noOtherRecs'].sum()}")
     print(f"Val AF: {val_pts['noAFRecs'].sum()} Normal: {val_pts['noNormalRecs'].sum()} Other: {val_pts['noOtherRecs'].sum()}")
 
-    train_pts.to_pickle(os.path.join(constants.feas1_path, f"{dataset_output_name}.pk"))
-    test_pts.to_pickle(os.path.join(constants.feas1_path, f"{dataset_output_name}.pk"))
-    val_pts.to_pickle(os.path.join(constants.feas1_path, f"{dataset_output_name}.pk"))
+    train_pts.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_train_pts.pk"))
+    test_pts.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_test_pts.pk"))
+    val_pts.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_val_pts.pk"))
+
+    # We save the test and validation portions as ECGs because these are much smaller
+    ecg_data_full, pt_data_full = load_feas1_chunk_range()
+    pt_data_full, ecg_data_full = prepare_safer_data(pt_data_full, ecg_data_full)
+
+    ecg_data_test = ecg_data_full[ecg_data_full["ptID"].isin(test_pts["ptID"])]
+    ecg_data_val = ecg_data_full[ecg_data_full["ptID"].isin(val_pts["ptID"])]
+
+    ecg_data_test.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_test.pk"))
+    ecg_data_val.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_val.pk"))
+
+elif dataset_name == "safer_feas2":
+    feas2_pt_data, feas2_ecg_data = SAFERDataset.load_feas_dataset(2, "dataframe_reload")
+
+    feas2_pt_data["noRecs"] = feas2_ecg_data["ptID"].value_counts()
+    feas2_pt_data["noHQrecs"] = feas2_ecg_data[feas2_ecg_data["class_index"] == 0]["ptID"].value_counts()
