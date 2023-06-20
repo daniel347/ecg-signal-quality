@@ -1,27 +1,28 @@
-import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import scipy
-import numpy as np
-
 import wfdb
 from scipy.io import loadmat
-from .DiagEnum import DiagEnum, feas1DiagToEnum
-from .CinC2020Enums import Sex
 from tqdm import tqdm
+from enum import Enum, auto
+from parallel_pandas import ParallelPandas
 
 from DataHandlers.DataProcessUtilities import *
+from .DiagEnum import DiagEnum
 
-import matplotlib
-matplotlib.use('TkAgg')
+cinc_2020_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\CinC2020Data"
 
-dataset_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\CinC2020Data"
+
+class Sex(Enum):
+    Undefined = -1
+    Male = auto()
+    Female = auto()
 
 
 class CinC2020DiagMapper:
 
     def __init__(self):
-        self.diag_desc = pd.read_csv(os.path.join(dataset_path, r"training\dx_mapping_scored.csv"))
+        self.diag_desc = pd.read_csv(os.path.join(cinc_2020_path, r"training\dx_mapping_scored.csv"))
         self.diag_desc["SNOMED CT Code"] = self.diag_desc["SNOMED CT Code"].astype(int)
 
         self.identical_diags = {713427006: 59118001,
@@ -224,7 +225,7 @@ def split_st_petersburg_file(filename, data, split_len):
 def load_dataset_scratch(process, ecg_range, ecg_meas_diag, save_name):
     # Generate ECG file names
     header_files = []
-    for root, dirs, files in os.walk(dataset_path):
+    for root, dirs, files in os.walk(cinc_2020_path):
         for f in files:
             g = os.path.join(root, f)
             if not f[0] == '.' and f[-3:] == 'mat' and os.path.isfile(g):
@@ -245,15 +246,15 @@ def load_dataset_scratch(process, ecg_range, ecg_meas_diag, save_name):
 
     # keep only the 27 classes of data used in the challenge - No need I think everything can go in other
     mapper = CinC2020DiagMapper()
-    # ecg_data = keep_challenge_diagnoses(ecg_data, mapper)
+    ecg_data = keep_challenge_diagnoses(ecg_data, mapper)
     ecg_data = chal_diag_to_safer_diag(ecg_data, mapper)
     ecg_data = safer_diag_to_class_list(ecg_data)
 
-    ecg_data.to_pickle(os.path.join(dataset_path, f"training/raw_{save_name}.pk"))
+    ecg_data.to_pickle(os.path.join(cinc_2020_path, f"training/raw_{save_name}.pk"))
 
     if process:
         ecg_data = process_data(ecg_data)
-        ecg_data.to_pickle(os.path.join(dataset_path, f"training/filtered_{save_name}.pk"))
+        ecg_data.to_pickle(os.path.join(cinc_2020_path, f"training/filtered_{save_name}.pk"))
 
     return ecg_data
 
@@ -265,15 +266,17 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     bandpass_dict = {fs: scipy.signal.butter(3, [f_low, f_high], 'bandpass', fs=fs, output='sos') for fs in fs_list}
     notch_dict = {fs: scipy.signal.butter(3, [48, 52], 'bandstop', fs=fs, output='sos') for fs in fs_list}
 
-    ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], bandpass_dict[x["fs"]]), axis=1)
-    ecg_data["data"] = ecg_data.apply(lambda x: filter_and_norm(x["data"], notch_dict[x["fs"]]), axis=1)
+    ecg_data["data"] = ecg_data.p_apply(lambda x: filter_and_norm(x["data"], bandpass_dict[x["fs"]]), axis=1)
+    ecg_data["data"] = ecg_data.p_apply(lambda x: filter_and_norm(x["data"], notch_dict[x["fs"]]), axis=1)
 
-    ecg_data["data"] = ecg_data.apply(lambda x: resample(x["data"], resample_rate, x["fs"]), axis=1)
+    ecg_data["data"] = ecg_data.p_apply(lambda x: resample(x["data"], resample_rate, x["fs"]), axis=1)
     ecg_data["length"] = ecg_data["data"].map(lambda x: x.shape[-1])
     ecg_data["fs"] = resample_rate
 
     # Get beat positions and heartrate
-    ecg_data["r_peaks"] = ecg_data.apply_parallel(get_r_peaks)
+    r_peaks = ecg_data.p_apply(get_r_peaks)
+    print(r_peaks.head())
+    ecg_data["r_peaks"] = ecg_data.p_apply(get_r_peaks, axis=1)
     ecg_data["heartrate"] = ecg_data.apply(lambda e: (len(e["r_peaks"]) / (e["length"] / e["fs"])) * 60, axis=1)
 
     # Get the rri feature
@@ -291,11 +294,11 @@ def process_data(ecg_data, f_low=0.67, f_high=30, resample_rate=300):
 def load_dataset_pickle(process, f_name, force_reprocess=False):
     try:
         end_path = f"training/filtered_{f_name}.pk" if (process and not force_reprocess) else f"training/raw_{f_name}.pk"
-        ecg_data = pd.read_pickle(os.path.join(dataset_path, end_path))
+        ecg_data = pd.read_pickle(os.path.join(cinc_2020_path, end_path))
 
         if force_reprocess:
             ecg_data = process_data(ecg_data)
-            ecg_data.to_pickle(os.path.join(dataset_path, f"training/filtered_{f_name}.pk"))
+            ecg_data.to_pickle(os.path.join(cinc_2020_path, f"training/filtered_{f_name}.pk"))
 
         return ecg_data
     except (OSError, FileNotFoundError) as e:
@@ -322,4 +325,4 @@ def update_dataset(f, save_name="dataframe.pk"):
     # Loads and updates a saved dataset with new columns etc, from function f
     dataset = load_dataset(save_name)
     dataset = f(dataset)
-    dataset.to_pickle(os.path.join(dataset_path, f"training/filtered_{save_name}.pk"))
+    dataset.to_pickle(os.path.join(cinc_2020_path, f"training/filtered_{save_name}.pk"))

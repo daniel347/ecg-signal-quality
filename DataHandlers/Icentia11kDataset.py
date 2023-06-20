@@ -1,19 +1,14 @@
 import pandas as pd
 import requests
-
+import wfdb
 import os
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from tqdm import tqdm
-import numpy as np
 import scipy
-from multiprocesspandas import applyparallel
 
 from DataHandlers.DataProcessUtilities import *
 
-import torch
-
-import wfdb
 
 base_url = "https://physionet.org/files/icentia11k-continuous-ecg/1.0/"
 dataset_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\Icentia11k"

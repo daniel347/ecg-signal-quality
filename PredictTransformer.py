@@ -1,35 +1,16 @@
-import sys
-
-from DataHandlers.DiagEnum import DiagEnum
-import DataHandlers.CinC2020Dataset as CinC2020Dataset
-import DataHandlers.CinC2020Enums
-import DataHandlers.SAFERDataset as SAFERDataset
-import DataHandlers.CinCDataset as CinCDataset
-import DataHandlers.MITNSTDataset as MITNSTDataset
-
+import os
+import pandas as pd
+import torch
+from torch.utils.data import DataLoader
 from sklearn.metrics import confusion_matrix
 
-from torch.utils.data import Dataset, DataLoader
-
 from Models.SpectrogramTransformerAttentionPooling import TransformerModel
-from torch.optim.lr_scheduler import LambdaLR
 
-from Utilities.Training import *
-
-import torch
-from sklearn.model_selection import train_test_split
 from Utilities.Predict import *
 import Utilities.constants as constants
-import os
+from Utilities.General import get_torch_device
 
 from DataHandlers.Dataloaders import RRiECGDataset as Dataset
-
-# A fudge because I moved the files
-sys.modules["SAFERDataset"] = SAFERDataset
-sys.modules["CinC2020Dataset"] = CinC2020Dataset
-sys.modules["DiagEnum"] = DataHandlers.DiagEnum
-sys.modules["CinC2020Enums"] = DataHandlers.CinC2020Enums
-sys.modules["CinCDataset"] = CinCDataset
 
 
 # ====  Options  ====
@@ -37,16 +18,10 @@ enable_cuda = True
 model_name = "Transformer_16_June_safer_train_attention_pooling_augmentation_smoothing"
 dataset_path = os.path.join(constants.feas1_path, "ECGs/feas1_27_mar_val.pk" )
 data_is_safer_pt = False  # True if dataset_split_name contains patients from safer rather than ECGs
-
 # =======
 
 
-if torch.cuda.is_available() and enable_cuda:
-    print("Using Cuda")
-    device = torch.device("cuda")
-else:
-    print("Using CPU")
-    device = torch.device("cpu")
+device = get_torch_device(enable_cuda)
 
 if data_is_safer_pt:
     dataset_pts = pd.read_pickle(dataset_path)
@@ -71,10 +46,42 @@ model = TransformerModel(3, embed_dim, n_head, 512, 6, n_fft, n_inp_rri, device=
 model = model.to(device)
 model.load_state_dict(torch.load(f"TrainedModels/{model_name}.pt", map_location=device))
 
-predictions, true_labels = get_predictions_transformer(model, val_dataloader, dataset, device)
+model.eval()
+
+true_labels = []
+predictions = []
+
+outputs = []
+inds = []
+
+with torch.no_grad():
+    for i, (signals, labels, ind) in enumerate(val_dataloader):
+        signal = signals[0].to(device).float()
+        rris = signals[1].to(device).float()
+        rri_len = signals[2].to(device).float()
+
+        labels = labels.long().detach().numpy()
+        true_labels.append(labels)
+
+        output = model(signal, rris, rri_len).detach().to("cpu").numpy()
+
+        prediction = output
+        predictions.append(prediction)
+
+        for i, o in zip(ind, output):
+            outputs.append(o)
+            if isinstance(i, str):
+                inds.append(i)
+            else:
+                inds.append(i.item())
+
+dataset["prediction"] = pd.Series(data=outputs, index=inds)
+
+predictions = np.concatenate(predictions)
+true_labels = np.concatenate(true_labels)
 
 conf_mat = confusion_matrix(true_labels, np.argmax(predictions, axis=1))
-print_results(conf_mat)
+print_af_results(conf_mat)
 
 
 

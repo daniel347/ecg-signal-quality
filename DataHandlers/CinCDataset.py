@@ -1,17 +1,16 @@
 import pandas as pd
 import os
 import scipy
-import numpy as np
+
 from .DiagEnum import DiagEnum
 from DataHandlers.DataProcessUtilities import *
 
-cinc_pk_path = "Datasets/CinC2017Data/database.pk"
+cinc_2017_path = "Datasets/CinC2017Data/"
+training_path = os.path.join(cinc_2017_path, "training2017/training2017/")
+answers_path = os.path.join(cinc_2017_path, "REFERENCE-v3.csv")
 
-training_path = "Datasets/CinC2017Data/training2017/training2017/"
-answers_path = "Datasets/CinC2017Data/REFERENCE-v3.csv"
 
-
-def load_cinc_dataset_scratch():
+def load_cinc_dataset_scratch(save_name="database"):
     dataset = pd.read_csv(answers_path, header=None, names=["class"], index_col=0)
     dataset["data"] = None
 
@@ -29,13 +28,13 @@ def load_cinc_dataset_scratch():
                 dataset.loc[name]["data"] = mat_data["val"]
                 print(f"Adding {name}\r", end="")
 
-    dataset.to_pickle(cinc_pk_path)
+    dataset.to_pickle(os.path.join(cinc_2017_path, f"{save_name}.pk"))
     return dataset
 
 
-def load_cinc_dataset_pickle():
+def load_cinc_dataset_pickle(save_name="database"):
     try:
-        dataset = pd.read_pickle(cinc_pk_path)
+        dataset = pd.read_pickle(os.path.join(cinc_2017_path, f"{save_name}.pk"))
         return dataset
     except (OSError, FileNotFoundError) as e:
         print(e)

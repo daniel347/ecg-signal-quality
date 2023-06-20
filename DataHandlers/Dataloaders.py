@@ -1,22 +1,17 @@
-import torch
-import DataHandlers.DataAugmentations as DataAugmentations
-from DataHandlers.DataProcessUtilities import *
-
-import threading
-
-from torch.utils.data import DataLoader
 import pandas as pd
 import sys
+import torch
+import threading
+from torch.utils.data import DataLoader
 
 import DataHandlers.SAFERDataset as SAFERDataset
 from DataHandlers.DiagEnum import DiagEnum
+import DataHandlers.DataAugmentations as DataAugmentations
+from DataHandlers.DataProcessUtilities import *
+
 import Utilities.constants as constants
-
-from torch.utils.data import Dataset
-
-
 sys.modules["SAFERDataset"] = SAFERDataset
-import math
+
 
 """
 AF Classification
@@ -67,7 +62,7 @@ class RRiECGDataset(torch.utils.data.Dataset):
 
 class DatasetSequenceIterator:
 
-    def __init__(self, data_loading_functions, batch_sizes, filter=lambda x:x):
+    def __init__(self, data_loading_functions, batch_sizes, filter=lambda x:x, noise_detection=False):
         self.dl_functions = data_loading_functions
 
         self.dataset = None
@@ -80,6 +75,7 @@ class DatasetSequenceIterator:
         self.dataloader_thread = None
 
         self.filter = filter
+        self.noise_detection = noise_detection
 
         self.batch_sizes = batch_sizes
         self.dl_index = 0
@@ -111,7 +107,10 @@ class DatasetSequenceIterator:
             self.next_dataset = self.dl_functions[self.dl_index + 1]()
             self.next_dataset = self.filter(self.next_dataset)
 
-            torch_dataset = RRiECGDataset(self.next_dataset)
+            if self.noise_detection:
+                torch_dataset = ECGDataset(self.next_dataset)
+            else:
+                torch_dataset = RRiECGDataset(self.next_dataset)
             self.next_dataloader_iterator = iter(DataLoader(torch_dataset, batch_size=self.batch_sizes[self.dl_index], shuffle=True, pin_memory=True))
             self.next_dataset_loaded = True
         else:
@@ -143,12 +142,12 @@ class DatasetSequenceIterator:
         return ret
 
 
-def load_feas1_chunk_range(chunk_range=(0, constants.num_chunks)):
+def load_feas1_chunk_range(chunk_range=(0, constants.num_chunks), input_name="dataframe"):
     ecg_data = []
     pt_data = []
 
     for chunk_num in range(chunk_range[0], chunk_range[1]):
-        feas1_pt_data, feas1_ecg_data = SAFERDataset.load_feas_dataset(1, f"dataframe_{chunk_num}.pk")
+        feas1_pt_data, feas1_ecg_data = SAFERDataset.load_feas_dataset(1, f"{input_name}_{chunk_num}.pk")
 
         ecg_data.append(feas1_ecg_data)
         pt_data.append(feas1_pt_data)
@@ -182,7 +181,6 @@ Noise Classification
 """
 
 class ECGDataset(torch.utils.data.Dataset):
-  'Characterizes a dataset for PyTorch'
   def __init__(self, dataset):
         'Initialization'
         self.dataset = dataset

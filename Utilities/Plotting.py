@@ -1,11 +1,7 @@
 from scipy import signal
 import numpy as np
-
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
-
-from sklearn.metrics import ConfusionMatrixDisplay
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def plot_ecg_spectrogram(x, fs=300, n_split=1, cut_range=None, figsize=(12, 5), export_quality=False):
     sample_len = x.shape[0]

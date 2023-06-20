@@ -1,6 +1,4 @@
 import numpy as np
-from scipy.signal import windows, sosfiltfilt
-import scipy.signal
 
 
 def filter_and_norm(x, sos):
@@ -14,6 +12,7 @@ def resample(x, resample_rate, orig_fs):
     import scipy.signal
     resample_len = int(round(x.shape[-1] * resample_rate / orig_fs))
     return scipy.signal.resample(x, resample_len)
+
 
 def get_rri_feature(x, n_beats=60):
     diffs = np.diff(x)[1:-1] # Discard first and last in case it is a false detect
@@ -30,10 +29,11 @@ def get_r_peaks(x):
 
     try:
         _, info = nk.ecg_peaks(x["data"], sampling_rate=300)
+        return np.array(info["ECG_R_Peaks"])
     except (IndexError, Exception):
         # I think I get an index error if no R peaks are found
+        print("Error getting R peaks")
         return np.array([])
-    return np.array(info["ECG_R_Peaks"])
 
 
 def normalise_rri_feature(ecg_data):

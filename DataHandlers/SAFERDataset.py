@@ -2,13 +2,12 @@ import pandas as pd
 import os
 import scipy
 import wfdb
-import numpy as np
+from parallel_pandas import ParallelPandas
+
 from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum
 from DataHandlers.DataProcessUtilities import *
-from multiprocesspandas import applyparallel
 
-import matplotlib
-matplotlib.use('TkAgg')
+ParallelPandas.initialize(n_cpu=12, split_factor=4)
 
 # -------- Loading the datasets --------
 
@@ -81,20 +80,23 @@ def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name
     dataset_path = feas2_path if (feas == 2) else feas1_path
 
     pt_data = load_pt_dataset(feas)
-    ecg_data = load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, 10000, 200000)
+    ecg_data = load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag)
 
     if filter_func:
         pt_data, ecg_data = filter_func(pt_data, ecg_data)
 
     # Read wfdb ECG records
-    for ind, file_path in ecg_data["file_path"].iteritems():
-        print(f"Reading file {file_path}\r", end="")
+    def read_record(x):
         try:
-            record = wfdb.rdrecord(os.path.join(dataset_path, file_path))
-            ecg_data["data"].loc[ind] = record.p_signal[:, 0]
-            ecg_data["adc_gain"].loc[ind] = record.adc_gain[0]
+            record = wfdb.rdrecord(os.path.join(dataset_path, x['file_path']))
+            return pd.Series([record.p_signal[:, 0], record.adc_gain[0]], index=['data', 'adc_gain'])
         except (OSError, FileNotFoundError):
-            print("Error, file does not exist or cannot be read, skipping")
+            return pd.Series([None, np.nan])
+
+    print("reading ECG files")
+    ecg_data_and_adc_cols = ecg_data.p_apply(read_record, axis=1)
+    ecg_data["data"] = ecg_data_and_adc_cols["data"]
+    ecg_data["adc_gain"] = ecg_data_and_adc_cols["adc_gain"]
 
     ecg_data.dropna(subset=["data"], inplace=True)
 
@@ -114,11 +116,11 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300):
     sos = scipy.signal.butter(3, [f_low, f_high], 'bandpass', fs=500, output='sos')
     sos_notch = scipy.signal.butter(3, [48, 52], 'bandstop', fs=500, output='sos')
 
-    feas2_ecg_data["data"] = feas2_ecg_data["data"].apply_parallel(lambda x: filter_and_norm(x, sos))
-    feas2_ecg_data["data"] = feas2_ecg_data["data"].apply_parallel(lambda x: filter_and_norm(x, sos_notch))
+    feas2_ecg_data["data"] = feas2_ecg_data["data"].p_apply(lambda x: filter_and_norm(x, sos))
+    feas2_ecg_data["data"] = feas2_ecg_data["data"].p_apply(lambda x: filter_and_norm(x, sos_notch))
 
     if resample_rate != 500:
-        feas2_ecg_data["data"] = feas2_ecg_data["data"].apply_parallel(lambda x: resample(x, resample_rate, 500))
+        feas2_ecg_data["data"] = feas2_ecg_data["data"].p_apply(lambda x: resample(x, resample_rate, 500))
         feas2_ecg_data["length"] = feas2_ecg_data["data"].map(lambda x: x.shape[-1])
 
     # Get beat positions and heartrate
@@ -152,7 +154,7 @@ def load_pt_dataset(feas, feas2_offset=10000):
     return pt_df
 
 
-def load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, feas2_offset=10000, feas2_ecg_offset=200000):
+def load_ecg_csv(feas, pt_data, ecg_range, ecg_meas_diag, feas2_offset=10000, feas2_ecg_offset=300000):
     dataset_path = feas2_path if (feas == 2) else feas1_path
     ecg_data = pd.read_csv(os.path.join(dataset_path, "rec_data_anon.csv"))
     if feas2_offset != 0 and feas == 2:
@@ -209,7 +211,7 @@ def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
         return
 
 
-def load_feas_dataset(feas=2, save_name="dataframe.pk", force_reload=False, process=True, force_reprocess=False, ecg_range=None, ecg_meas_diag=None, filter_func=None):
+def load_feas_dataset(feas=2, save_name="dataframe", force_reload=False, process=True, force_reprocess=False, ecg_range=None, ecg_meas_diag=None, filter_func=None):
     dataset = None
     if not force_reload:
         dataset = load_feas_dataset_pickle(process, save_name, feas, force_reprocess)

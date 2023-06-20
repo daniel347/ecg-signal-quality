@@ -14,6 +14,7 @@ class DiagEnum(Enum):
     HeartBlock = 8  # 2nd or 3rd degree
     VentricularTachycardia = 7
 
+
 def feas1DiagToEnum(diagNum):
     if diagNum == 1:
         return DiagEnum.HeartBlock

@@ -1,9 +1,8 @@
 import pandas as pd
-import numpy as np
 import wfdb
 import os
-
 from scipy import signal
+
 from DataHandlers.DataProcessUtilities import *
 
 mit_dataset_path = "Datasets/mit-bih-noise-stress-test-database"
