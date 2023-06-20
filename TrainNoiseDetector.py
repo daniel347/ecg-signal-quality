@@ -35,7 +35,7 @@ test_dataset = test_dataset[test_dataset["length"] == 9120]
 print(train_dataset["class_index"].value_counts())
 print(test_dataset["class_index"].value_counts())
 
-torch_dataset_train = Dataset(test_dataset)
+torch_dataset_train = Dataset(train_dataset)
 train_dataloader = DataLoader(torch_dataset_train, batch_size=batch_size, shuffle=True, pin_memory=True)
 
 torch_dataset_test = Dataset(test_dataset)

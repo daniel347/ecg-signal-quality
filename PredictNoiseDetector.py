@@ -18,19 +18,30 @@ from Utilities.General import get_torch_device
 enable_cuda = True
 model_name = "20_Jun_noise_detector_test_script"
 
-dataset_name = "19_Jun_from_scratch_test"
+# Either a string or a list of strings of dataset names
+dataset_name = ["18_Jun_feas1_test_train_pts", "18_Jun_feas1_test_test_pts", "18_Jun_feas1_test_val_pts"]
 # Modify to local dataset store if not SAFER data
-dataset_path = os.path.join(constants.feas2_path, f"ECGs/{dataset_name}.pk")
-output_path = os.path.join(constants.feas2_path, f"ECGs/{dataset_name}_noise_predictions.pk")
+if type(dataset_name) == list:
+    dataset_path = [os.path.join(constants.feas1_path, f"ECGs/{name}.pk") for name in dataset_name]
+    output_path = os.path.join(constants.feas1_path, f"ECGs/{dataset_name[0]}_noise_predictions.pk")
+else:
+    dataset_path = os.path.join(constants.feas1_path, f"ECGs/{dataset_name}.pk")
+    output_path = os.path.join(constants.feas1_path, f"ECGs/{dataset_name}_noise_predictions.pk")
 
-data_is_feas1_pt = False  # True if dataset_split_name contains patients from safer
+data_is_feas1_pt = True  # True if dataset_split_name contains patients from safer
 batch_size = 128
 # =======
 
 device = get_torch_device(enable_cuda)
 
 if data_is_feas1_pt:
-    pt_dataset = pd.read_pickle(dataset_path)
+    if type(dataset_name) == list:
+        datasets = []
+        for name in dataset_path:
+            datasets.append(pd.read_pickle(name))
+        pt_dataset = pd.concat(datasets)
+    else:
+        pt_dataset = pd.read_pickle(dataset_path)
     def filter_pts(ecg_data):
         return ecg_data[ecg_data["ptID"].isin(pt_dataset["ptID"])]
 
@@ -49,7 +60,14 @@ if data_is_feas1_pt:
                                          filter=filter_pts,
                                          noise_detection=True)
 else:
-    dataset = pd.read_pickle(dataset_path)
+    if type(dataset_name) == list:
+        datasets = []
+        for name in dataset_path:
+            datasets.append(pd.read_pickle(name))
+        dataset = pd.concat(datasets)
+    else:
+        dataset = pd.read_pickle(dataset_path)
+
     dataset = dataset[dataset["length"] == 9120]
     torch_dataset = Dataset(dataset)
     dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
@@ -78,9 +96,8 @@ noise_predictions.to_pickle(output_path)
 
 if not data_is_feas1_pt:
     dataset["noise_prediction"] = noise_predictions
-
-conf_mat = confusion_matrix(dataset["class_index"], dataset["noise_prediction"] > 0)
-print_noise_results(conf_mat)
+    conf_mat = confusion_matrix(dataset["class_index"], dataset["noise_prediction"] > 0)
+    print_noise_results(conf_mat)
 
 
 
