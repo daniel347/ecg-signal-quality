@@ -17,8 +17,8 @@ from DataHandlers.CinCDataset import cinc_2017_path
 
 # ====  Options  ====
 enable_cuda = True
-model_name = "Transformer_16_June_safer_train_attention_pooling_augmentation_smoothing"
-dataset_path = os.path.join(feas1_path, "ECGs/feas1_27_mar_val.pk" )
+model_name = "Transformer_20_may_cinc_train_attention_pooling_augmentation_smoothing"
+dataset_path = os.path.join(feas1_path, "ECGs/feas1_27_mar_val.pk")
 data_is_safer_pt = False  # True if dataset_split_name contains patients from safer rather than ECGs
 # =======
 

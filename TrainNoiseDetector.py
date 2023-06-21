@@ -16,7 +16,7 @@ from Utilities.Plotting import *
 
 # ====  Options  ====
 enable_cuda = True
-out_model_name = "20_Jun_noise_detector_test_script"
+out_model_name = "cnn_model"
 dataset_split_name = "19_Jun_from_scratch"
 
 batch_size = 32

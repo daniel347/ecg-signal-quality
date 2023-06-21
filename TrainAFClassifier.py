@@ -22,9 +22,9 @@ from Utilities.General import get_torch_device
 
 # ====  Options  ====
 enable_cuda = True
-out_model_name = "Transformer_20_June_safer_train_attention_pooling_augmentation_smoothing"
+out_model_name = "transformer_model"
 
-pre_trained_model_name = "Transformer_16_June_cinc_2020_train_attention_pooling_augmentation_smoothing"
+pre_trained_model_name = "Transformer_20_may_cinc_train_attention_pooling_augmentation_smoothing"
 dataset_split_name = os.path.join(feas1_path, "ECGs/feas1_27_mar")
 dataset_type = "safer_feas1"
 

@@ -1,6 +1,6 @@
-Datasets/CinC2017Data
+Datasets
 .idea
 
-/Datasets/mit-bih-noise-stress-test-database/
-/projectEnv/
-/OtherModels/
+projectEnv/
+OtherModels/
+

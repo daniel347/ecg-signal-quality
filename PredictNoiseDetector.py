@@ -18,7 +18,7 @@ from Utilities.General import get_torch_device
 
 # ====  Options  ====
 enable_cuda = True
-model_name = "20_Jun_noise_detector_test_script"
+model_name = "CNN_16_may_final_no_undecided"
 
 # Either a string or a list of strings of dataset names
 dataset_name = ["18_Jun_feas1_test_train_pts", "18_Jun_feas1_test_test_pts", "18_Jun_feas1_test_val_pts"]
