@@ -10,11 +10,13 @@ from tqdm import tqdm
 import DataHandlers.MITNSTDataset as MITNSTDataset
 from DataHandlers.Dataloaders import RRiECGDataset as Dataset
 from DataHandlers.Dataloaders import DatasetSequenceIterator, load_feas1_chunk_range, prepare_safer_data
+from DataHandlers.SAFERDataset import feas1_path, feas2_path, num_chunks, chunk_size
+from DataHandlers.CinC2020Dataset import cinc_2020_path
+from DataHandlers.CinCDataset import cinc_2017_path
 
 from Models.SpectrogramTransformerAttentionPooling import TransformerModel
 
 from Utilities.Training import *
-import Utilities.constants as constants
 from Utilities.General import get_torch_device
 
 
@@ -23,10 +25,10 @@ enable_cuda = True
 out_model_name = "Transformer_20_June_safer_train_attention_pooling_augmentation_smoothing"
 
 pre_trained_model_name = "Transformer_16_June_cinc_2020_train_attention_pooling_augmentation_smoothing"
-dataset_split_name = "feas1_27_mar"
+dataset_split_name = os.path.join(feas1_path, "ECGs/feas1_27_mar")
 dataset_type = "safer_feas1"
 
-noise_predictions_name = "18_Jun_feas1_test_train_pts_noise_predictions"
+noise_predictions_name = os.path.join(feas1_path, "18_Jun_feas1_test_train_pts_noise_predictions")
 p_noisy_threshold = 1  # Only allow signals below this probability of noise to be used in training and testing
 
 augment_noise = False
@@ -40,7 +42,7 @@ device = get_torch_device(enable_cuda)
 
 # Load the dataset splits
 if dataset_type == "safer_feas1":
-    train_pts = pd.read_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_split_name}_train_pts.pk"))
+    train_pts = pd.read_pickle(f"{dataset_split_name}_train_pts.pk")
 
     def load_feas1_nth_chuck(n):
         ecg_data, pt_data = load_feas1_chunk_range((n, n + 1))
@@ -49,7 +51,7 @@ if dataset_type == "safer_feas1":
         return prepare_safer_data(pt_data, ecg_data)[1]
 
     if p_noisy_threshold < 1:
-        noise_pred_df = pd.read_pickle(os.path.join(constants.feas1_path, f"ECGs/{noise_predictions_name}.pk"))
+        noise_pred_df = pd.read_pickle(f"{noise_predictions_name}.pk")
 
         # Create some a filter function to select data from each partition
         def filter_train_pts(ecg_data):
@@ -61,29 +63,27 @@ if dataset_type == "safer_feas1":
 
 
     loading_functions = [lambda n=n: load_feas1_nth_chuck(n) for n in
-                         range(constants.num_chunks)]
+                         range(num_chunks)]
 
     train_dataloader = DatasetSequenceIterator(loading_functions,
                                                 [batch_size for n in
-                                                range(constants.num_chunks)],
+                                                range(num_chunks)],
                                                 filter=filter_train_pts)
 
     # Load the test dataset directly from file
-    feas1_test_dataset = pd.read_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_split_name}_test.pk"))
+    feas1_test_dataset = pd.read_pickle(f"{dataset_split_name}_test.pk")
     if p_noisy_threshold < 1:
         feas1_test_dataset = feas1_test_dataset[noise_pred_df <= p_noisy_threshold]
     torch_dataset_test = Dataset(feas1_test_dataset)
     test_dataloader = DataLoader(torch_dataset_test, batch_size=batch_size, shuffle=True, pin_memory=True)
 else:
-    train_dataset = pd.read_pickle(f"TrainedModels/{dataset_split_name}_train.pk")
-    test_dataset = pd.read_pickle(f"TrainedModels/{dataset_split_name}_test.pk")
+    train_dataset = pd.read_pickle(f"{dataset_split_name}_train.pk")
+    test_dataset = pd.read_pickle(f"{dataset_split_name}_test.pk")
 
     if p_noisy_threshold < 1:
-        noise_pred_df_train = pd.read_pickle(os.path.join(constants.feas1_path, f"ECGs/{noise_predictions_name}_train.pk"))
-        train_dataset = train_dataset[noise_pred_df_train <= p_noisy_threshold]
-
-        noise_pred_df_test = pd.read_pickle(os.path.join(constants.feas1_path, f"ECGs/{noise_predictions_name}_test.pk"))
-        test_dataset = test_dataset[noise_pred_df_test <= p_noisy_threshold]
+        noise_pred_df = pd.read_pickle(f"{noise_predictions_name}_train.pk")
+        train_dataset = train_dataset[noise_pred_df <= p_noisy_threshold]
+        test_dataset = test_dataset[noise_pred_df <= p_noisy_threshold]
 
     torch_dataset_test = Dataset(test_dataset)
     test_dataloader = DataLoader(torch_dataset_test, batch_size=batch_size, shuffle=True, pin_memory=True)

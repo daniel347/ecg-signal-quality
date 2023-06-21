@@ -8,7 +8,10 @@ import DataHandlers.CinC2020Dataset as CinC2020Dataset
 import DataHandlers.CinCDataset as CinCDataset
 from DataHandlers.Dataloaders import load_feas1_chunk_range, prepare_safer_data
 
-import Utilities.constants as constants
+from DataHandlers.SAFERDataset import feas1_path, feas2_path, num_chunks, chunk_size
+from DataHandlers.CinC2020Dataset import cinc_2020_path
+from DataHandlers.CinCDataset import cinc_2017_path
+
 from Utilities.Training import *
 from Utilities.Predict import *
 
@@ -16,7 +19,7 @@ from Utilities.Predict import *
 # ====  Options  ====
 dataset_name = "cinc_2017"  # One of cinc_2020, cinc_2027, safer_feas1
 
-dataset_input_name = "dataframe_20_Jun"  # "dataframe_2" for cinC 2020, "dataframe" for safer feas1 and safer feas2 and "database" for cinc 2017
+dataset_input_name = "dataframe"
 dataset_output_name = "20_Jun_cinc_2017_from_scratch"
 
 test_size = 0.15
@@ -46,9 +49,9 @@ if __name__ == '__main__':
         print(val_dataset["class_index"].value_counts())
 
         # Save the CinC2017 data splits for consistent results!
-        train_dataset.to_pickle(f"TrainedModels/{dataset_output_name}_train.pk")
-        test_dataset.to_pickle(f"TrainedModels/{dataset_output_name}_test.pk")
-        val_dataset.to_pickle(f"TrainedModels/{dataset_output_name}_val.pk")
+        train_dataset.to_pickle(os.path.join(cinc_2020_path, f"{dataset_output_name}_train.pk"))
+        test_dataset.to_pickle(os.path.join(cinc_2020_path, f"{dataset_output_name}_test.pk"))
+        val_dataset.to_pickle(os.path.join(cinc_2020_path, f"{dataset_output_name}_val.pk"))
 
 
     elif dataset_name == "cinc_2017":
@@ -81,9 +84,9 @@ if __name__ == '__main__':
         print(test_dataset_2017["class_index"].value_counts())
         print(val_dataset_2017["class_index"].value_counts())
 
-        train_dataset_2017.to_pickle(f"TrainedModels/{dataset_output_name}_train.pk")
-        test_dataset_2017.to_pickle(f"TrainedModels/{dataset_output_name}_test.pk")
-        val_dataset_2017.to_pickle(f"TrainedModels/{dataset_output_name}_val.pk")
+        train_dataset_2017.to_pickle(os.path.join(cinc_2017_path, f"{dataset_output_name}_train.pk"))
+        test_dataset_2017.to_pickle(os.path.join(cinc_2017_path, f"{dataset_output_name}_test.pk"))
+        val_dataset_2017.to_pickle(os.path.join(cinc_2017_path, f"{dataset_output_name}_val.pk"))
 
 
     elif dataset_name == "safer_feas1":
@@ -144,9 +147,9 @@ if __name__ == '__main__':
         print(f"Train AF: {train_pts['noAFRecs'].sum()} Normal: {train_pts['noNormalRecs'].sum()} Other: {train_pts['noOtherRecs'].sum()}")
         print(f"Val AF: {val_pts['noAFRecs'].sum()} Normal: {val_pts['noNormalRecs'].sum()} Other: {val_pts['noOtherRecs'].sum()}")
 
-        train_pts.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_train_pts.pk"))
-        test_pts.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_test_pts.pk"))
-        val_pts.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_val_pts.pk"))
+        train_pts.to_pickle(os.path.join(feas1_path, f"ECGs/{dataset_output_name}_train_pts.pk"))
+        test_pts.to_pickle(os.path.join(feas1_path, f"ECGs/{dataset_output_name}_test_pts.pk"))
+        val_pts.to_pickle(os.path.join(feas1_path, f"ECGs/{dataset_output_name}_val_pts.pk"))
 
         # We save the test and validation portions as ECGs because these are much smaller - note this takes a while though
         ecg_data_full, pt_data_full = load_feas1_chunk_range(input_name=dataset_input_name)
@@ -155,8 +158,8 @@ if __name__ == '__main__':
         ecg_data_test = ecg_data_full[ecg_data_full["ptID"].isin(test_pts["ptID"])]
         ecg_data_val = ecg_data_full[ecg_data_full["ptID"].isin(val_pts["ptID"])]
 
-        ecg_data_test.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_test.pk"))
-        ecg_data_val.to_pickle(os.path.join(constants.feas1_path, f"ECGs/{dataset_output_name}_val.pk"))
+        ecg_data_test.to_pickle(os.path.join(feas1_path, f"ECGs/{dataset_output_name}_test.pk"))
+        ecg_data_val.to_pickle(os.path.join(feas1_path, f"ECGs/{dataset_output_name}_val.pk"))
 
 
     elif dataset_name == "safer_feas2":
@@ -167,5 +170,5 @@ if __name__ == '__main__':
         feas2_ecg_data.index = feas2_ecg_data["measID"]
 
         feas2_pt_data, feas2_ecg_data = prepare_safer_data(feas2_pt_data, feas2_ecg_data)
-        feas2_ecg_data.to_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_output_name}_af_processed.pk"))
+        feas2_ecg_data.to_pickle(os.path.join(feas2_path, f"ECGs/{dataset_output_name}_af_processed.pk"))
 

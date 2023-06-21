@@ -8,8 +8,10 @@ from Models.NoiseCNN import CNN, hyperparameters
 
 from DataHandlers.Dataloaders import ECGDataset as Dataset
 from DataHandlers.Dataloaders import DatasetSequenceIterator, load_feas1_chunk_range, prepare_safer_data
+from DataHandlers.SAFERDataset import feas1_path, feas2_path, num_chunks, chunk_size
+from DataHandlers.CinC2020Dataset import cinc_2020_path
+from DataHandlers.CinCDataset import cinc_2017_path
 
-import Utilities.constants as constants
 from Utilities.Predict import *
 from Utilities.General import get_torch_device
 
@@ -20,13 +22,13 @@ model_name = "20_Jun_noise_detector_test_script"
 
 # Either a string or a list of strings of dataset names
 dataset_name = ["18_Jun_feas1_test_train_pts", "18_Jun_feas1_test_test_pts", "18_Jun_feas1_test_val_pts"]
-# Modify to local dataset store if not SAFER data
+# Modify to local dataset path if not SAFER data
 if type(dataset_name) == list:
-    dataset_path = [os.path.join(constants.feas1_path, f"ECGs/{name}.pk") for name in dataset_name]
-    output_path = os.path.join(constants.feas1_path, f"ECGs/{dataset_name[0]}_noise_predictions.pk")
+    dataset_path = [os.path.join(feas1_path, f"ECGs/{name}.pk") for name in dataset_name]
+    output_path = os.path.join(feas1_path, f"ECGs/{dataset_name[0]}_noise_predictions.pk")
 else:
-    dataset_path = os.path.join(constants.feas1_path, f"ECGs/{dataset_name}.pk")
-    output_path = os.path.join(constants.feas1_path, f"ECGs/{dataset_name}_noise_predictions.pk")
+    dataset_path = os.path.join(feas1_path, f"ECGs/{dataset_name}.pk")
+    output_path = os.path.join(feas1_path, f"ECGs/{dataset_name}_noise_predictions.pk")
 
 data_is_feas1_pt = True  # True if dataset_split_name contains patients from safer
 batch_size = 128
@@ -53,10 +55,10 @@ if data_is_feas1_pt:
 
 
     loading_functions = [lambda n=n: load_feas1_nth_chuck(n) for n in
-                         range(constants.num_chunks)]
+                         range(num_chunks)]
 
     dataloader = DatasetSequenceIterator(loading_functions,
-                                         [batch_size for n in range(constants.num_chunks)],
+                                         [batch_size for n in range(num_chunks)],
                                          filter=filter_pts,
                                          noise_detection=True)
 else:

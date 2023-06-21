@@ -7,16 +7,18 @@ from sklearn.metrics import confusion_matrix
 from Models.SpectrogramTransformerAttentionPooling import TransformerModel
 
 from Utilities.Predict import *
-import Utilities.constants as constants
 from Utilities.General import get_torch_device
 
 from DataHandlers.Dataloaders import RRiECGDataset as Dataset
+from DataHandlers.SAFERDataset import feas1_path, feas2_path, num_chunks, chunk_size
+from DataHandlers.CinC2020Dataset import cinc_2020_path
+from DataHandlers.CinCDataset import cinc_2017_path
 
 
 # ====  Options  ====
 enable_cuda = True
 model_name = "Transformer_16_June_safer_train_attention_pooling_augmentation_smoothing"
-dataset_path = os.path.join(constants.feas1_path, "ECGs/feas1_27_mar_val.pk" )
+dataset_path = os.path.join(feas1_path, "ECGs/feas1_27_mar_val.pk" )
 data_is_safer_pt = False  # True if dataset_split_name contains patients from safer rather than ECGs
 # =======
 

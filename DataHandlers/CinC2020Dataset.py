@@ -10,6 +10,8 @@ from parallel_pandas import ParallelPandas
 from DataHandlers.DataProcessUtilities import *
 from .DiagEnum import DiagEnum
 
+ParallelPandas.initialize(n_cpu=12, split_factor=4)
+
 cinc_2020_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\CinC2020Data"
 
 

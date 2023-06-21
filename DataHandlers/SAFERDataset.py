@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import scipy
 import wfdb
+import math
 from parallel_pandas import ParallelPandas
 
 from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum
@@ -9,7 +10,9 @@ from DataHandlers.DataProcessUtilities import *
 
 ParallelPandas.initialize(n_cpu=12, split_factor=4)
 
-# -------- Loading the datasets --------
+# Chunks the
+chunk_size = 20000
+num_chunks = math.ceil(162515 / chunk_size )
 
 feas2_path = r"D:\2022_23_DSiromani\Feas2"
 feas1_path = r"D:\2022_23_DSiromani\Feas1"
