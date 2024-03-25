@@ -12,9 +12,9 @@ ParallelPandas.initialize(n_cpu=12, split_factor=4)
 
 # Chunks the
 chunk_size = 20000
-num_chunks = math.ceil(162515 / chunk_size )
+num_chunks = math.ceil(162515 / chunk_size)
 
-feas2_path = r"D:\2022_23_DSiromani\Feas2"
+feas2_path = r"C:\Users\daniel\Documents\2022_23_DSiromani\Feas2"  # r"D:\2022_23_DSiromani\Feas2"
 feas1_path = r"D:\2022_23_DSiromani\Feas1"
 
 

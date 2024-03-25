@@ -56,8 +56,8 @@ class CNN(nn.Module):
 
         self.lstm_n_hidden = lstm_n_hidden
         self.lstm = nn.LSTM(input_size=c6, hidden_size=lstm_n_hidden, bidirectional=True, batch_first=True)
-
         self.dense2 = nn.Linear(2 * lstm_n_hidden, dense2)
+
         self.dense3 = nn.Linear(dense2, 1)
 
         self.activation = nn.ELU()
@@ -70,6 +70,7 @@ class CNN(nn.Module):
         hidden_state = torch.zeros(2, batch_size, self.lstm_n_hidden, device=device)
         cell_state = torch.zeros(2, batch_size, self.lstm_n_hidden, device=device)
         return (hidden_state, cell_state)
+
 
     def forward(self, x):
         # [1, 9120]
