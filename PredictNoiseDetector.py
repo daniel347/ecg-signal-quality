@@ -32,6 +32,9 @@ model_name = "CNN_16_may_final_no_undecided"
 def filter_ecgs(pt, ecg):
     ecg_new = ecg[ecg.length == 9120]
     ecg_new = ecg_new[ecg_new.measDiag != DiagEnum.Undecided]
+    ecg_new = ecg_new[ecg_new.measDiagAgree |
+                      (ecg_new.measDiagRev1 == DiagEnum.Undecided) |
+                      (ecg_new.measDiagRev2 == DiagEnum.Undecided)]
     pt_new = pt[pt.ptID.isin(ecg_new.ptID)]
 
     return pt_new, ecg_new
@@ -51,12 +54,12 @@ if __name__ == "__main__":
         dataset_path = os.path.join(feas1_path, f"ECGs/{dataset_name}.pk")
         output_path = os.path.join(feas1_path, f"ECGs/{dataset_name}_noise_predictions.pk")
     elif isinstance(dataset_name, Dataset):
-        output_path = f"noise_predictions.pk"
+        output_path = f"noise_predictions_{dataset_name.feas}.pk"
 
 
 
     data_is_feas1_pt = False  # True if dataset_split_name contains patients from safer
-    batch_size = 128
+    batch_size = 32
     # =======
 
     device = get_torch_device(enable_cuda)
@@ -99,7 +102,7 @@ if __name__ == "__main__":
         if isinstance(dataset_name, Dataset):
             torch_dataset = dataset_name
             dataset = torch_dataset.ecg_data
-            dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=8)
+            dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=2)
         else:
             dataset = dataset[dataset["length"] == 9120]
             torch_dataset = Dataset(dataset)

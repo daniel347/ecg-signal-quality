@@ -14,6 +14,18 @@ class DiagEnum(Enum):
     HeartBlock = 8  # 2nd or 3rd degree
     VentricularTachycardia = 7
 
+    # Extra labels for trial
+    OtherSignificantArrythmia = 9
+
+
+def trialDiagToEnum(diagNum):
+    if diagNum == 5:
+        return DiagEnum.PoorQuality
+    elif diagNum == 4:
+        return DiagEnum.OtherSignificantArrythmia
+    else:
+        return DiagEnum(diagNum)
+
 
 def feas1DiagToEnum(diagNum):
     if diagNum == 1:
@@ -26,3 +38,4 @@ def feas1DiagToEnum(diagNum):
         return DiagEnum.NoAF
     else:
         return DiagEnum(diagNum)
+

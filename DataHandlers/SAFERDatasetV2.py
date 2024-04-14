@@ -10,35 +10,30 @@ from tqdm import tqdm
 from functools import partial
 from torch.utils.data import Dataset
 
-from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum
+from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum, trialDiagToEnum
 from DataHandlers.DataProcessUtilities import *
 
-ParallelPandas.initialize(n_cpu=12, split_factor=4)
+ParallelPandas.initialize(n_cpu=4, split_factor=4)
 
 # Chunks the
 chunk_size = 20000
 num_chunks = math.ceil(162515 / chunk_size)
 
-pt_offsets = [0, 10000, 100000]
-ecg_offsets = [0, 300000, 10000000]
+pt_offsets = [0, 10000, 20000]
+ecg_offsets = [0, 300000, 600000]
 
 feas2_path = r"Datasets\Feas2_DSiromani"
 feas1_path = r"Datasets\Feas1_DSiromani"
 trial_path = r"Datasets\Trial_DSiromani"
+
+dataset_paths = [feas1_path, feas2_path, trial_path]
 
 
 class SaferDataset(Dataset):
 
     def __init__(self, feas, label_gen=None, use_processed=True, ecg_range=None, ecg_meas_diag=None, filter_func=None):
         self.feas = feas
-        if feas == 1:
-            self.dataset_path = feas1_path
-        elif feas == 2:
-            self.dataset_path = feas2_path
-        elif feas == 3:
-            self.dataset_path = trial_path
-        else:
-            raise NotImplementedError
+        self.dataset_path = dataset_paths[feas-1]
 
         self.use_processed = True
         self.label_gen = label_gen
@@ -48,11 +43,19 @@ class SaferDataset(Dataset):
         self.pt_data.index = self.pt_data.ptID
 
         self.ecg_data = pd.read_csv(os.path.join(self.dataset_path, "rec_data_anon_processed.csv"))
+
+        diag_enum_cols = ["measDiag", "measDiagRev1", "measDiagRev2",
+                          "ptDiag", "ptDiagRev1", "ptDiagRev2", "ptDiagRev3"]
+        for c in diag_enum_cols:
+            self.ecg_data[c] = self.ecg_data[c].map(lambda x: DiagEnum[x.split(".")[1]])
+
+        """
         # Turn string back to enum
         if isinstance(self.ecg_data.measDiag.dtype, str):
             self.ecg_data.measDiag = self.ecg_data.measDiag.map(lambda x: DiagEnum[x.split(".")[1]])
         elif is_numeric_dtype(self.ecg_data.measDiag.dtype):
             self.ecg_data.measDiag = self.ecg_data.measDiag.map(lambda x: DiagEnum(x))
+            """
 
         self.ecg_data = self.ecg_data[self.ecg_data.ptID.isin(self.pt_data.ptID)]
         self.ecg_data = self.ecg_data.dropna(how="all", axis="columns")
@@ -77,7 +80,6 @@ class SaferDataset(Dataset):
 
         else:
             return data_row["data"], ecg_row.name
-
 
 def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
     if ecg_range is not None:
@@ -141,7 +143,7 @@ def add_ecg_class_counts(safer_pt_data, safer_ecg_data):
 
 
 def load_feas_dataset_scratch(process, feas, ecg_range, ecg_meas_diag, save_name, filter_func):
-    dataset_path = feas2_path if (feas == 2) else feas1_path
+    dataset_path = dataset_paths[feas-1]
 
     pt_data = load_pt_dataset(feas)
     ecg_data = load_ecg_csv(feas)
@@ -238,10 +240,16 @@ def process_data(feas2_ecg_data, f_low=0.67, f_high=30, resample_rate=300, paral
 
 
 def load_pt_dataset(feas):
-    dataset_path = feas2_path if (feas == 2) else feas1_path
+    dataset_path = dataset_paths[feas-1]
     pt_df = pd.read_csv(os.path.join(dataset_path, "pt_data_anon.csv"))
-    ecg_path_labels = "ptECGs/{:06d}/saferF{}_pt{:06d}"
-    pt_df["file_path"] = pt_df["ptID"].map(lambda id: ecg_path_labels.format((id // 100) * 100, feas, id))
+
+    if feas in [1,2]:
+        ecg_path_labels = "ptECGs/{:06d}/saferF{}_pt{:06d}"
+        pt_df["file_path"] = pt_df["ptID"].map(lambda id: ecg_path_labels.format((id // 100) * 100, feas, id))
+    elif feas == 3:
+        ecg_path_labels = "ptECGs/{:06d}/saferT_pt{:06d}"
+        pt_df["file_path"] = pt_df["ptID"].map(lambda id: ecg_path_labels.format((id // 100) * 100, id))
+
     pt_df["ptID"] += pt_offsets[feas-1]
     pt_df.index = pt_df["ptID"]
     pt_df["feas"] = feas
@@ -251,7 +259,7 @@ def load_pt_dataset(feas):
 
 
 def load_ecg_csv(feas):
-    dataset_path = feas2_path if (feas == 2) else feas1_path
+    dataset_path = dataset_paths[feas-1]
     ecg_data = pd.read_csv(os.path.join(dataset_path, "rec_data_anon.csv"))
     ecg_data["ptID"] += pt_offsets[feas-1]
     ecg_data["data"] = None
@@ -268,6 +276,8 @@ def load_ecg_csv(feas):
             ecg_data[diag_ind] = ecg_data[diag_ind].map(lambda d: DiagEnum(d))
         elif feas == 1:
             ecg_data[diag_ind] = ecg_data[diag_ind].map(lambda d: feas1DiagToEnum(d))
+        elif feas == 3:
+            ecg_data[diag_ind] = ecg_data[diag_ind].map(lambda d: trialDiagToEnum(d))
 
     ecg_data["measIDpt"] = ecg_data["measID"]
 
@@ -282,7 +292,7 @@ def load_ecg_csv(feas):
 
 
 def load_feas_dataset_pickle(process, f_name, feas=2, force_reprocess=False):
-    dataset_path = feas2_path if (feas == 2) else feas1_path
+    dataset_path = dataset_paths[feas-1]
 
     try:
         pt_data = load_pt_dataset(feas)
@@ -325,8 +335,8 @@ def read_pt_record(x, dataset_path):
         return None
 
 
-def process_ecgs_and_save_wfdb(feas, save_folder="ptECGs_processed"):
-    dataset_path = feas2_path if (feas == 2) else feas1_path
+def process_ecgs_and_save_wfdb(feas, save_folder="ptECGs_processed", filter_undecided=False):
+    dataset_path = dataset_paths[feas-1]
 
     save_path = os.path.join(dataset_path, save_folder)
     if not os.path.isdir(save_path):
@@ -334,6 +344,10 @@ def process_ecgs_and_save_wfdb(feas, save_folder="ptECGs_processed"):
 
     pt_data = load_pt_dataset(feas)
     ecg_data = load_ecg_csv(feas)
+
+    if filter_undecided:
+        ecg_data = ecg_data[ecg_data.measDiag != DiagEnum.Undecided]
+        pt_data = pt_data[pt_data.ptID.isin(ecg_data.ptID)]
 
     print("reading ECG files")
     pt_data["processed_df"] = None
@@ -343,17 +357,16 @@ def process_ecgs_and_save_wfdb(feas, save_folder="ptECGs_processed"):
     ecg_lens = pd.Series(index=ecg_data.index, data=None)
 
     for _, x in tqdm(pt_data.iterrows(), total=len(pt_data.index)):
-        if x.ptID == 94:
-            pass
-
         ecg_df = read_pt_record(x, dataset_path)
         if ecg_df is None:
             print(f"cannot read pt: {x.ptID}")
             continue
-        ecg_df_processed = process_data(ecg_df, parallel=False)
 
-        ecg_df_pt = ecg_data[ecg_data.ptID == x.ptID].copy().reset_index(drop=True)  # I rely on this being ordered nicely, which I hope is the case
-        ecg_df_pt = pd.concat([ecg_df_pt, ecg_df_processed], axis=1)
+        ecg_df_pt = ecg_data[ecg_data.ptID == x.ptID].copy()
+        ecg_df_pt.index = ecg_df_pt.measNo - 1
+
+        ecg_df_processed = process_data(ecg_df.loc[ecg_df_pt.index], parallel=False)
+        ecg_df_pt = pd.concat([ecg_df_pt, ecg_df_processed], axis=1, join="inner")
 
         folder = os.path.join(save_path, f"{str(int(math.floor(x.ptID/100.0)*100)).zfill(6)}")
         if not os.path.isdir(folder):
@@ -395,7 +408,7 @@ if __name__ == "__main__":
     pt_data.to_csv(os.path.join(feas1_path, "pt_data_anon_processed_paths.csv"))
     """
 
-    process_ecgs_and_save_wfdb(3)
+    process_ecgs_and_save_wfdb(1, filter_undecided=True)
 
 
     """
