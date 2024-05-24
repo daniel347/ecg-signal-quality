@@ -9,14 +9,30 @@ from Models.NoiseCNN import CNN, hyperparameters
 from Utilities.Training import *
 from DataHandlers.Dataloaders import ECGDataset as Dataset
 
-import Utilities.constants as constants
 from Utilities.General import get_torch_device
 from Utilities.Plotting import *
+
+from DataHandlers.SAFERDatasetV2 import SaferDataset
+from DataHandlers.DiagEnum import DiagEnum
+from DataHandlers.DataProcessUtilities import adaptive_gain_norm
+
+def filter_ecgs(pt, ecg):
+    ecg_new = ecg[ecg.length == 9120]
+    ecg_new = ecg_new[ecg_new.measDiag != DiagEnum.Undecided]
+    # ecg_new = ecg_new[ecg_new.measDiagAgree |
+    #                   (ecg_new.measDiagRev1 == DiagEnum.Undecided) |
+    #                   (ecg_new.measDiagRev2 == DiagEnum.Undecided)]
+    pt_new = pt[pt.ptID.isin(ecg_new.ptID)]
+
+    return pt_new, ecg_new
+
+def label_noise(x):
+    return int(x == DiagEnum.PoorQuality)
 
 
 # ====  Options  ====
 enable_cuda = True
-out_model_name = "cnn_model"
+out_model_name = "cnn_model_14_apr_2024"
 dataset_split_name = "19_Jun_from_scratch"
 
 batch_size = 32
@@ -26,6 +42,7 @@ early_stop_num = 20
 
 device = get_torch_device(enable_cuda)
 
+"""
 train_dataset = pd.read_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_split_name}_train.pk"))
 test_dataset = pd.read_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_split_name}_test.pk"))
 
@@ -40,6 +57,13 @@ train_dataloader = DataLoader(torch_dataset_train, batch_size=batch_size, shuffl
 
 torch_dataset_test = Dataset(test_dataset)
 test_dataloader = DataLoader(torch_dataset_test, batch_size=batch_size, shuffle=True, pin_memory=True)
+"""
+
+dataset = SaferDataset(feas=2,
+                       label_gen=label_noise,
+                       filter_func=filter_ecgs,
+                       preprocess_func=lambda x: adaptive_gain_norm(x, 601))
+
 
 model = CNN(**hyperparameters).to(device)
 

@@ -1,11 +1,18 @@
 import numpy as np
-
+from scipy.signal import convolve
 
 def filter_and_norm(x, sos):
     from scipy.signal import sosfiltfilt
     x_filt = sosfiltfilt(sos, x, padlen=150)
     x_norm = (x_filt - x_filt.mean()) / x_filt.std()
     return x_norm
+
+
+def adaptive_norm(x, win_len=600):
+    from scipy.signal import convolve
+    window = np.ones(win_len) / win_len
+    x_power = convolve(np.abs(x), window)
+    return x / x_power
 
 
 def resample(x, resample_rate, orig_fs):
@@ -83,7 +90,7 @@ def cut_ecg_adjust_r_peaks(ecg, cut_size):
 def adaptive_gain_norm(x, w):
     x_mean_sub = np.pad(x - x.mean(), int((w - 1) / 2), "reflect")
     window = np.ones(w)
-    sigma_square = np.convolve(x_mean_sub ** 2, window, mode="valid") / w
+    sigma_square = convolve(x_mean_sub ** 2, window, mode="valid") / w
     gain = 1 / np.sqrt(sigma_square)
 
     return x * gain

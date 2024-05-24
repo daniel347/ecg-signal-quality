@@ -12,6 +12,9 @@ from torch.utils.data import Dataset
 
 from DataHandlers.DiagEnum import DiagEnum, feas1DiagToEnum, trialDiagToEnum
 from DataHandlers.DataProcessUtilities import *
+from Utilities.Plotting import plot_ecg
+
+import matplotlib.pyplot as plt
 
 ParallelPandas.initialize(n_cpu=4, split_factor=4)
 
@@ -22,21 +25,23 @@ num_chunks = math.ceil(162515 / chunk_size)
 pt_offsets = [0, 10000, 20000]
 ecg_offsets = [0, 300000, 600000]
 
-feas2_path = r"Datasets\Feas2_DSiromani"
-feas1_path = r"Datasets\Feas1_DSiromani"
-trial_path = r"Datasets\Trial_DSiromani"
+feas2_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\Feas2_DSiromani"
+feas1_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\Feas1_DSiromani"
+trial_path = r"C:\Users\daniel\Documents\CambridgeSoftwareProjects\ecg-signal-quality\Datasets\Trial_DSiromani"
 
 dataset_paths = [feas1_path, feas2_path, trial_path]
 
 
 class SaferDataset(Dataset):
 
-    def __init__(self, feas, label_gen=None, use_processed=True, ecg_range=None, ecg_meas_diag=None, filter_func=None):
+    def __init__(self, feas, label_gen=None, use_processed=True, ecg_range=None, ecg_meas_diag=None, filter_func=None, preprocess_func=None):
         self.feas = feas
         self.dataset_path = dataset_paths[feas-1]
 
         self.use_processed = True
         self.label_gen = label_gen
+
+        self.preprocess_func = preprocess_func
 
         self.pt_data = pd.read_csv(os.path.join(self.dataset_path, "pt_data_anon_processed_paths.csv"))
         self.pt_data = self.pt_data[self.pt_data.processed_df.map(lambda x: isinstance(x, str))]
@@ -73,13 +78,18 @@ class SaferDataset(Dataset):
         pt = self.pt_data.loc[ecg_row.ptID]
         pt_ecgs = pd.read_pickle(os.path.join(self.dataset_path, pt.processed_df))
 
-        data_row = pt_ecgs.loc[ecg_row.measNo-1]  # -1 because I forgot to index starting at 1
+        data_row = pt_ecgs.loc[ecg_row.measNo - 1]  # -1 because I forgot to index starting at 1
+        if self.preprocess_func is not None:
+            data = self.preprocess_func(data_row.data)
+        else:
+            data = data_row.data
+
         if self.label_gen:
             y = self.label_gen(data_row.measDiag)
-            return data_row["data"], y, ecg_row.name
+            return data, y, ecg_row.name
 
         else:
-            return data_row["data"], ecg_row.name
+            return data, ecg_row.name
 
 def filter_dataset(pt_data, ecg_data, ecg_range, ecg_meas_diag):
     if ecg_range is not None:
@@ -378,7 +388,7 @@ def process_ecgs_and_save_wfdb(feas, save_folder="ptECGs_processed", filter_unde
         pt_file_paths.loc[x.ptID] = os.path.relpath(fname, dataset_path)
 
         sig_lens = ecg_df_pt.data.map(lambda x: x.shape[0]).values
-        ecg_lens.loc[ecg_data.loc[ecg_data.ptID == x.ptID].index] = sig_lens
+        ecg_lens.loc[ecg_data.ptID == x.ptID] = sig_lens
 
     pt_data["processed_df"] = pt_file_paths
     ecg_data["length"] = ecg_lens
@@ -408,7 +418,7 @@ if __name__ == "__main__":
     pt_data.to_csv(os.path.join(feas1_path, "pt_data_anon_processed_paths.csv"))
     """
 
-    process_ecgs_and_save_wfdb(1, filter_undecided=True)
+    process_ecgs_and_save_wfdb(3, filter_undecided=True)
 
 
     """

@@ -7,6 +7,7 @@ from sklearn.metrics import confusion_matrix
 from Utilities.Predict import *
 from Utilities.Plotting import *
 
+
 def filter_ecgs(pt, ecg):
     ecg_new = ecg[ecg.length == 9120]
     ecg_new = ecg_new[ecg_new.measDiag != DiagEnum.Undecided]
@@ -40,7 +41,7 @@ def compute_metrics(ecg_df, pred_thresh, prediction_label):
 
 print("About to load predictions")
 feas = 3
-results = pd.read_pickle(f"noise_predictions_{feas}.pk")
+results = pd.read_pickle(f"noise_predictions_adaptive_gain_norm_{feas}.pk")
 dataset = SaferDataset(feas=feas, label_gen=label_noise, filter_func=filter_ecgs)
 
 ecg_df = dataset.ecg_data
@@ -77,8 +78,68 @@ patients_not_found_n_af = patients_not_found_n_af.drop([0])
 plt.bar(patients_not_found_n_af.index, patients_not_found_n_af.values)
 plt.show()
 
+### Plot the number of ECGs removed for patients
+
+ecg_df["isAF"] = ecg_df.measDiag == DiagEnum.AF
+
+total_n_af = ecg_df.groupby("ptID").isAF.sum()
+n_af_after_removal = ecg_df.groupby("ptID").apply(lambda x: x[x.prediction < 0.2].isAF.sum())
+
+af_pts_lost = total_n_af[(total_n_af > 0) & (n_af_after_removal == 0)].index
+
+"""
+### Plot patients who lost more than 5 ECGs
+
+max_lost_pt = total_n_af.loc[af_pts_lost].idxmax()
+for pt in total_n_af.loc[af_pts_lost][total_n_af >= 5].index:
+    print(f"Patient: {pt} lost  {total_n_af.loc[pt]}")
+    # Plot ECGs for the patient who lost 26!
+    ecg_df["dataset_idx"] = np.arange(0, len(ecg_df.index))
+    max_lost_ecgs = ecg_df[(ecg_df.ptID == pt) & ecg_df.isAF]
+
+    print(f"Patients ECG labelling distribution: {ecg_df[(ecg_df.ptID == pt)].measDiag.value_counts()}")
+    for i, sig in max_lost_ecgs.iterrows():
+        ecg, label, ind = dataset[sig.dataset_idx]
+        print(f"i: {i}, ind: {ind}")
+        print(f"noise label: {label}")
+        plot_ecg(ecg, n_split=3)
+        print(sig[["measDiag", "ptID", "ptDiag", "prediction"]])
+        plt.show()
+"""
+
+"""
+plt.bar(np.arange(len(af_pts_lost)), total_n_af.loc[af_pts_lost].sort_values())
+plt.title("AF participants not identified by the system")
+plt.show()
+"""
+
+n_af_total_hist_lost = total_n_af.loc[af_pts_lost].value_counts()
+plt.bar(n_af_total_hist_lost.index, n_af_total_hist_lost.values)
+plt.title("AF participants missed with CNN")
+plt.ylabel("No. participants")
+plt.xlabel("No. AF ECGs")
+plt.show()
+
+
+af_pts_retained = total_n_af[(total_n_af > 0) & (n_af_after_removal > 0)].index
+
+"""
+plt.bar(np.arange(len(af_pts_retained)), total_n_af.loc[af_pts_retained], label="Original No. AF")
+plt.bar(np.arange(len(af_pts_retained)), n_af_after_removal.loc[af_pts_retained], label="No. AF after CNN")
+plt.title("AF patients identified")
+plt.show()
+"""
+
+n_af_total_hist_retained = (total_n_af.loc[af_pts_retained] - n_af_after_removal[af_pts_retained]).value_counts()
+plt.bar(n_af_total_hist_retained.index, n_af_total_hist_retained.values)
+plt.title("AF participants identified CNN")
+plt.ylabel("No. participants")
+plt.xlabel("No. AF ECGs removed")
+plt.show()
+
 
 # Plot the misclassified ECGS
+"""
 ecg_df["dataset_idx"] = np.arange(0, len(ecg_df.index))
 false_positives = ecg_df[(ecg_df["prediction"] > 0) & (ecg_df["measDiag"] == DiagEnum.AF)]
 for i, sig in false_positives.iterrows():
@@ -86,6 +147,7 @@ for i, sig in false_positives.iterrows():
     plot_ecg(ecg, n_split=3)
     print(sig[["measDiag", "ptID", "ptDiag", "prediction"]])
     plt.show()
+"""
 
 
 print("===================================")

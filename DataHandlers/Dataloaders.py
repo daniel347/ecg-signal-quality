@@ -9,7 +9,7 @@ from DataHandlers.DiagEnum import DiagEnum
 import DataHandlers.DataAugmentations as DataAugmentations
 from DataHandlers.DataProcessUtilities import *
 
-import Utilities.constants as constants
+# import Utilities.constants as constants
 sys.modules["SAFERDataset"] = SAFERDataset
 
 
@@ -142,7 +142,7 @@ class DatasetSequenceIterator:
         return ret
 
 
-def load_feas1_chunk_range(chunk_range=(0, constants.num_chunks), input_name="dataframe"):
+def load_feas1_chunk_range(chunk_range=(0, 9), input_name="dataframe"):
     ecg_data = []
     pt_data = []
 

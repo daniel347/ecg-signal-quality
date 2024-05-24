@@ -18,6 +18,7 @@ from torch.fft import fft
 from DataHandlers.SAFERDatasetV2 import SaferDataset
 from DataHandlers.CinC2020Dataset import cinc_2020_path
 from DataHandlers.CinCDataset import cinc_2017_path
+from DataHandlers.DataProcessUtilities import adaptive_gain_norm
 
 from Utilities.Predict import *
 from Utilities.General import get_torch_device
@@ -43,9 +44,15 @@ def filter_ecgs(pt, ecg):
 def label_noise(x):
     return int(x == DiagEnum.PoorQuality)
 
+def preprocess(x):
+    return adaptive_gain_norm(x, 601)
+
 if __name__ == "__main__":
     # Either a string or a list of strings of dataset names
-    dataset_name = SaferDataset(feas=1, label_gen=label_noise, filter_func=filter_ecgs)# ["18_Jun_feas1_test_train_pts", "18_Jun_feas1_test_test_pts", "18_Jun_feas1_test_val_pts"]
+    dataset_name = SaferDataset(feas=3,
+                                label_gen=label_noise,
+                                filter_func=filter_ecgs,
+                                preprocess_func=preprocess)  # ["18_Jun_feas1_test_train_pts", "18_Jun_feas1_test_test_pts", "18_Jun_feas1_test_val_pts"]
     # Modify to local dataset path if not SAFER data
     if isinstance(dataset_name, list):
         dataset_path = [os.path.join(feas1_path, f"ECGs/{name}.pk") for name in dataset_name]
@@ -59,7 +66,7 @@ if __name__ == "__main__":
 
 
     data_is_feas1_pt = False  # True if dataset_split_name contains patients from safer
-    batch_size = 32
+    batch_size = 128
     # =======
 
     device = get_torch_device(enable_cuda)
@@ -102,7 +109,7 @@ if __name__ == "__main__":
         if isinstance(dataset_name, Dataset):
             torch_dataset = dataset_name
             dataset = torch_dataset.ecg_data
-            dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=2)
+            dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=8)
         else:
             dataset = dataset[dataset["length"] == 9120]
             torch_dataset = Dataset(dataset)
