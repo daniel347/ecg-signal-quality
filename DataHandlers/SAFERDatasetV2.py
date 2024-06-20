@@ -52,7 +52,10 @@ class SaferDataset(Dataset):
         diag_enum_cols = ["measDiag", "measDiagRev1", "measDiagRev2",
                           "ptDiag", "ptDiagRev1", "ptDiagRev2", "ptDiagRev3"]
         for c in diag_enum_cols:
-            self.ecg_data[c] = self.ecg_data[c].map(lambda x: DiagEnum[x.split(".")[1]])
+            if is_numeric_dtype(self.ecg_data[c].dtype):
+                self.ecg_data[c] = self.ecg_data[c].map(lambda x: DiagEnum(x))
+            elif isinstance(self.ecg_data[c].dtype, object):  # Everything is an object though!
+                self.ecg_data[c] = self.ecg_data[c].map(lambda x: DiagEnum[x.split(".")[1]])
 
         """
         # Turn string back to enum
@@ -68,7 +71,7 @@ class SaferDataset(Dataset):
         if filter_func:
             print(f"Diags before filter: {self.ecg_data.measDiag.value_counts()}")
             self.pt_data, self.ecg_data = filter_func(self.pt_data, self.ecg_data)
-            print(f"Diags after filter: {self.ecg_data.measDiag.value_counts()}")
+            # print(f"Diags after filter: {self.ecg_data.measDiag.value_counts()}")
 
     def __len__(self):
         return len(self.ecg_data.index)
@@ -418,7 +421,7 @@ if __name__ == "__main__":
     pt_data.to_csv(os.path.join(feas1_path, "pt_data_anon_processed_paths.csv"))
     """
 
-    process_ecgs_and_save_wfdb(3, filter_undecided=True)
+    process_ecgs_and_save_wfdb(1, filter_undecided=True)
 
 
     """

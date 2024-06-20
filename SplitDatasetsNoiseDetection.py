@@ -3,12 +3,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from DataHandlers.DiagEnum import DiagEnum
-import DataHandlers.SAFERDataset as SAFERDataset
+from DataHandlers.SAFERDatasetV2 import SaferDataset
 import DataHandlers.CinC2020Dataset as CinC2020Dataset
 import DataHandlers.CinCDataset as CinCDataset
 from DataHandlers.Dataloaders import load_feas1_chunk_range, prepare_safer_data
 
-import Utilities.constants as constants
 from Utilities.Training import *
 from Utilities.Predict import *
 
@@ -16,26 +15,46 @@ from Utilities.Predict import *
 # ====  Options  ====
 dataset_name = "safer_feas2"  # One of cinc_2020, cinc_2027, safer_feas1
 
-dataset_input_name = "dataframe_20_Jun"  # "dataframe_2" for cinC 2020, "dataframe" for safer feas1 and safer feas2 and "database" for cinc 2017
-dataset_output_name = "20_Jun_from_scratch"
+dataset_output_name = "9_Jun_2024_trial"
 
 test_size = 0.15
 val_size = 0.15
 # =======
 
-if __name__ == '__main__':
-    if dataset_name == "safer_feas2":
-        feas2_pt_data, feas2_ecg_data = SAFERDataset.load_feas_dataset(2, dataset_input_name)
 
-        feas2_ecg_data["feas"] = 2
-        feas2_ecg_data.index = feas2_ecg_data["measID"]
+def filter_ecgs(pt, ecg):
+    ecg_new = ecg[ecg.length == 9120]
+    ecg_new = ecg_new[ecg_new.measDiag != DiagEnum.Undecided]
+    ecg_new = ecg_new[ecg_new.measDiagAgree |
+                      (ecg_new.measDiagRev1 == DiagEnum.Undecided) |
+                      (ecg_new.measDiagRev2 == DiagEnum.Undecided)]
+    pt_new = pt[pt.ptID.isin(ecg_new.ptID)]
+
+    return pt_new, ecg_new
+
+
+def label_noise(x):
+    return int(x == DiagEnum.PoorQuality)
+
+
+if __name__ == '__main__' and dataset_name == "safer_feas2":
+    if dataset_name == "safer_feas2":
+        dataset = SaferDataset(feas=3,
+                               label_gen=label_noise,
+                               filter_func=filter_ecgs)
+
+        feas2_pt_data, feas2_ecg_data = dataset.pt_data, dataset.ecg_data
+
+        # feas2_ecg_data["feas"] = 2
+        # feas2_ecg_data.index = feas2_ecg_data["measID"]
 
         feas2_pt_data["noRecs"] = feas2_ecg_data["ptID"].value_counts()
         feas2_pt_data["noHQrecs"] = feas2_ecg_data[feas2_ecg_data["class_index"] == 0]["ptID"].value_counts()
-        feas2_pt_data["noHQrecsNotUndecided"] = \
-        feas2_ecg_data[(feas2_ecg_data["class_index"] == 0) & (feas2_ecg_data["measDiag"] != DiagEnum.Undecided)]["ptID"].value_counts()
+        feas2_pt_data["noHQrecsNotUndecided"] = feas2_ecg_data[(feas2_ecg_data["class_index"] == 0) &
+                                                               (feas2_ecg_data["measDiag"] != DiagEnum.Undecided)]["ptID"].value_counts()
         feas2_pt_data["noLQrecs"] = feas2_pt_data["noRecs"] - feas2_pt_data["noHQrecs"]
-        feas2_pt_data[["noRecs", "noHQrecs", "noHQrecsNotUndecided"]] = feas2_pt_data[["noRecs", "noHQrecs", "noHQrecsNotUndecided"]].fillna(0)
+
+        feas2_pt_data[["noRecs", "noHQrecs", "noHQrecsNotUndecided", "noLQrecs"]] = feas2_pt_data[["noRecs", "noHQrecs", "noHQrecsNotUndecided", "noLQrecs"]].fillna(0)
         def make_SAFER_dataloaders(pt_data, ecg_data, test_frac, val_frac):
 
             train_patients = []
@@ -113,11 +132,11 @@ if __name__ == '__main__':
         print(f"Train High quality: {train_pts['noHQrecsNotUndecided'].sum()} low quality: {train_pts['noLQrecs'].sum()}")
         print(f"Val High quality: {val_pts['noHQrecsNotUndecided'].sum()} low quality: {val_pts['noLQrecs'].sum()}")
 
-        train_dataset.to_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_output_name}_train.pk"))
-        test_dataset.to_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_output_name}_test.pk"))
-        val_dataset.to_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_output_name}_val.pk"))
+        train_dataset.to_pickle(os.path.join(dataset.dataset_path, f"splits/{dataset_output_name}_train.pk"))
+        test_dataset.to_pickle(os.path.join(dataset.dataset_path, f"splits/{dataset_output_name}_test.pk"))
+        val_dataset.to_pickle(os.path.join(dataset.dataset_path, f"splits/{dataset_output_name}_val.pk"))
 
-        train_pts.to_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_output_name}_train_pts.pk"))
-        test_pts.to_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_output_name}_test_pts.pk"))
-        val_pts.to_pickle(os.path.join(constants.feas2_path, f"ECGs/{dataset_output_name}_val_pts.pk"))
+        train_pts.to_pickle(os.path.join(dataset.dataset_path, f"splits/{dataset_output_name}_train_pts.pk"))
+        test_pts.to_pickle(os.path.join(dataset.dataset_path, f"splits/{dataset_output_name}_test_pts.pk"))
+        val_pts.to_pickle(os.path.join(dataset.dataset_path, f"splits/{dataset_output_name}_val_pts.pk"))
 

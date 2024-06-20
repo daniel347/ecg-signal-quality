@@ -15,7 +15,7 @@ from torch.fft import fft
 # from DataHandlers.Dataloaders import ECGDataset as Dataset
 # from DataHandlers.Dataloaders import DatasetSequenceIterator, load_feas1_chunk_range, prepare_safer_data
 # from DataHandlers.SAFERDataset import feas1_path, feas2_path, num_chunks, chunk_size
-from DataHandlers.SAFERDatasetV2 import SaferDataset
+from DataHandlers.SAFERDatasetV2 import SaferDataset, feas1_path, feas2_path, trial_path, num_chunks, chunk_size
 from DataHandlers.CinC2020Dataset import cinc_2020_path
 from DataHandlers.CinCDataset import cinc_2017_path
 from DataHandlers.DataProcessUtilities import adaptive_gain_norm
@@ -27,16 +27,21 @@ from Utilities.Plotting import plot_ecg
 
 # ====  Options  ====
 enable_cuda = True
-model_name = "CNN_16_may_final_no_undecided"
+model_name = "CNN_16_may_final_no_undecided" # "cnn_model_trial_trained_10_jun_2024_adaptive_gain" #
 
 
-def filter_ecgs(pt, ecg):
+def filter_ecgs_with_split(pt, ecg, pt_split=None):
     ecg_new = ecg[ecg.length == 9120]
     ecg_new = ecg_new[ecg_new.measDiag != DiagEnum.Undecided]
     ecg_new = ecg_new[ecg_new.measDiagAgree |
-                      (ecg_new.measDiagRev1 == DiagEnum.Undecided) |
-                      (ecg_new.measDiagRev2 == DiagEnum.Undecided)]
+                     (ecg_new.measDiagRev1 == DiagEnum.Undecided) |
+                     (ecg_new.measDiagRev2 == DiagEnum.Undecided)]
     pt_new = pt[pt.ptID.isin(ecg_new.ptID)]
+
+    if pt_split is not None:
+        # Select only participants from pt_split
+        pt_new = pt_new[pt_new.ptID.isin(pt_split.index)]
+        ecg_new = ecg_new[ecg_new.ptID.isin(pt_new.index)]
 
     return pt_new, ecg_new
 
@@ -44,15 +49,19 @@ def filter_ecgs(pt, ecg):
 def label_noise(x):
     return int(x == DiagEnum.PoorQuality)
 
+
 def preprocess(x):
     return adaptive_gain_norm(x, 601)
 
+
 if __name__ == "__main__":
     # Either a string or a list of strings of dataset names
-    dataset_name = SaferDataset(feas=3,
+    # val_pts = pd.read_pickle(os.path.join(trial_path, f"splits/9_Jun_2024_trial_val_pts.pk"))
+    val_pts = None
+    dataset_name = SaferDataset(feas=1,
                                 label_gen=label_noise,
-                                filter_func=filter_ecgs,
-                                preprocess_func=preprocess)  # ["18_Jun_feas1_test_train_pts", "18_Jun_feas1_test_test_pts", "18_Jun_feas1_test_val_pts"]
+                                filter_func=lambda pt, ecg: filter_ecgs_with_split(pt, ecg, val_pts))
+                                # )  # ["18_Jun_feas1_test_train_pts", "18_Jun_feas1_test_test_pts", "18_Jun_feas1_test_val_pts"]
     # Modify to local dataset path if not SAFER data
     if isinstance(dataset_name, list):
         dataset_path = [os.path.join(feas1_path, f"ECGs/{name}.pk") for name in dataset_name]
@@ -61,7 +70,7 @@ if __name__ == "__main__":
         dataset_path = os.path.join(feas1_path, f"ECGs/{dataset_name}.pk")
         output_path = os.path.join(feas1_path, f"ECGs/{dataset_name}_noise_predictions.pk")
     elif isinstance(dataset_name, Dataset):
-        output_path = f"noise_predictions_{dataset_name.feas}.pk"
+        output_path = f"noise_predictions_{dataset_name.feas}_11_june.pk"
 
 
 
@@ -109,7 +118,7 @@ if __name__ == "__main__":
         if isinstance(dataset_name, Dataset):
             torch_dataset = dataset_name
             dataset = torch_dataset.ecg_data
-            dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=8)
+            dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=2)
         else:
             dataset = dataset[dataset["length"] == 9120]
             torch_dataset = Dataset(dataset)

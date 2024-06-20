@@ -1,4 +1,4 @@
-from DataHandlers.SAFERDatasetV2 import SaferDataset
+from DataHandlers.SAFERDatasetV2 import SaferDataset, trial_path
 import pandas as pd
 from DataHandlers.DiagEnum import DiagEnum
 import numpy as np
@@ -6,9 +6,10 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 from Utilities.Predict import *
 from Utilities.Plotting import *
+import os
 
 
-def filter_ecgs(pt, ecg):
+def filter_ecgs_with_split(pt, ecg, pt_split=None):
     ecg_new = ecg[ecg.length == 9120]
     ecg_new = ecg_new[ecg_new.measDiag != DiagEnum.Undecided]
     ecg_new = ecg_new[ecg_new.measDiagAgree |
@@ -16,7 +17,13 @@ def filter_ecgs(pt, ecg):
                       (ecg_new.measDiagRev2 == DiagEnum.Undecided)]
     pt_new = pt[pt.ptID.isin(ecg_new.ptID)]
 
+    if pt_split is not None:
+        # Select only participants from pt_split
+        pt_new = pt_new[pt_new.ptID.isin(pt_split.index)]
+        ecg_new = ecg_new[ecg_new.ptID.isin(pt_new.index)]
+
     return pt_new, ecg_new
+
 
 
 def label_noise(x):
@@ -40,9 +47,11 @@ def compute_metrics(ecg_df, pred_thresh, prediction_label):
     return ecgs_reviewed, total_ecgs_reviewed, pts_found_af, total_pts_found_af, poor_qual_pred_counts
 
 print("About to load predictions")
-feas = 3
-results = pd.read_pickle(f"noise_predictions_adaptive_gain_norm_{feas}.pk")
-dataset = SaferDataset(feas=feas, label_gen=label_noise, filter_func=filter_ecgs)
+feas = 1
+results = pd.read_pickle(f"noise_predictions_{feas}_11_june.pk")
+# val_pts = pd.read_pickle(os.path.join(trial_path, f"splits/9_Jun_2024_trial_val_pts.pk"))
+val_pts = None
+dataset = SaferDataset(feas=feas, label_gen=label_noise, filter_func=lambda pt, ecg: filter_ecgs_with_split(pt, ecg, val_pts))
 
 ecg_df = dataset.ecg_data
 ecg_df["prediction"] = results
@@ -83,7 +92,7 @@ plt.show()
 ecg_df["isAF"] = ecg_df.measDiag == DiagEnum.AF
 
 total_n_af = ecg_df.groupby("ptID").isAF.sum()
-n_af_after_removal = ecg_df.groupby("ptID").apply(lambda x: x[x.prediction < 0.2].isAF.sum())
+n_af_after_removal = ecg_df.groupby("ptID").apply(lambda x: x[x.prediction < 0].isAF.sum())
 
 af_pts_lost = total_n_af[(total_n_af > 0) & (n_af_after_removal == 0)].index
 
@@ -106,6 +115,13 @@ for pt in total_n_af.loc[af_pts_lost][total_n_af >= 5].index:
         print(sig[["measDiag", "ptID", "ptDiag", "prediction"]])
         plt.show()
 """
+
+### Calculate the number of patients who had greater than 5 ECGs labelled as AF
+more_than_5_af_pts = total_n_af[total_n_af > 5]
+af_more_than_5_pts_lost = total_n_af[(total_n_af > 5) & (n_af_after_removal == 0)].index
+print(f"{len(more_than_5_af_pts.index)} patients had more than 5 AF ECGs")
+print(f"{len(af_more_than_5_pts_lost)} patients with more than 5 AF ECGs all of which were removed by CNN")
+print("======")
 
 """
 plt.bar(np.arange(len(af_pts_lost)), total_n_af.loc[af_pts_lost].sort_values())
